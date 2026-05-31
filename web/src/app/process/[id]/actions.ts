@@ -126,8 +126,13 @@ export async function sendRows(
 
 // ───────── 작업완료=집계 (Module7, work 전용): 작업중 N건 → 완료 1건 ─────────
 //  · 같은 시트 완료블록 생성. 일련번호 그룹표기(단건이면 그대로)
-//  · 작업전(P) = 선택행 weight(중량K) 합 · 작업후/로스/로스율 = 수동입력+자동계산
-export async function completeLots(processId: string, lotIds: string[]) {
+//  · 작업전(P) = 선택행 weight(중량K) 합 · 작업후(Q) = 집계 모달에서 입력받음
+//  · 로스(R)/로스율(S)은 작업전·작업후로 자동계산(shipWeight/lossOf)
+export async function completeLots(
+  processId: string,
+  lotIds: string[],
+  afterWeight: number | null,
+) {
   if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
   if ((await schemaOf(supabase, processId)) !== "work")
@@ -147,8 +152,8 @@ export async function completeLots(processId: string, lotIds: string[]) {
       status: "작업중",
       description: joinDesc(lots),
       qty: sumOf(lots, "qty"),
-      weight_before: sumOf(lots, "weight"), // 작업전 = 중량(K) 합
-      weight: null, // 작업후 = 수동입력
+      weight_before: sumOf(lots, "weight"),                 // 작업전 = 중량(K) 합
+      weight: afterWeight == null ? null : round2(afterWeight), // 작업후 = 모달 입력
       tag: sumOf(lots, "tag"),
       q: sumOf(lots, "q"),
       raw_weight: sumOf(lots, "raw_weight"),
@@ -408,25 +413,31 @@ export async function splitLotCustom(
   return { ok: true, parts: parts.length };
 }
 
-// ───────── Tag 보정 (Module14): io 출고행, Tag수정(잔여수량) → Tag중량/Tag로스 ─────────
-//  Tag중량 = ROUNDDOWN(Tag수정 × 0.035, 2), Tag로스 = Tag − Tag중량
-export async function tagAdjust(processId: string, lotIds: string[]) {
-  if (lotIds.length === 0) return { error: "Tag 보정할 출고행을 선택하세요." };
+// ───────── Tag 보정 (Module14): 모달에서 받은 잔여 Tag 수량 → Tag수정/Tag중량/Tag로스 ─────────
+//  · 입력=행별 잔여 Tag 수량. Tag수정(V)=수량, Tag중량(W)=ROUNDDOWN(수량×0.035,2), Tag로스(X)=Tag(P)−Tag중량
+//  · 출고중량(Y)은 수식 자동(shipWeight): IF(실중량=0,"",IF(Tag로스=0,실중량,실중량+Tag−Tag중량))
+export async function tagAdjust(
+  processId: string,
+  items: { id: string; qty: number }[],
+) {
+  const targets = (items ?? []).filter((it) => it.id && it.qty != null && !Number.isNaN(it.qty));
+  if (targets.length === 0) return { error: "잔여 Tag 수량이 입력된 행이 없습니다." };
   const supabase = await createClient();
-  const { data } = await supabase.from("lots").select("*").in("id", lotIds);
-  const rows = (data ?? []) as LotRow[];
+  const { data } = await supabase
+    .from("lots").select("id, tag").in("id", targets.map((t) => t.id));
+  const tagOf = new Map((data ?? []).map((l) => [l.id as string, Number(l.tag) || 0]));
   let n = 0;
-  for (const l of rows) {
-    if (l.tag_fixed == null) continue; // Tag수정(수량) 미입력 행은 건너뜀
-    const tw = Math.floor(Number(l.tag_fixed) * 0.035 * 100) / 100; // ROUNDDOWN 2자리
-    const tl = round2(N(l.tag) - tw);
-    await supabase.from("lots").update({ tag_weight: tw, tag_loss: tl }).eq("id", l.id);
+  for (const it of targets) {
+    if (!tagOf.has(it.id)) continue;
+    const tw = Math.floor(it.qty * 0.035 * 100) / 100; // ROUNDDOWN 2자리
+    const tl = round2((tagOf.get(it.id) ?? 0) - tw);
+    await supabase.from("lots")
+      .update({ tag_fixed: it.qty, tag_weight: tw, tag_loss: tl })
+      .eq("id", it.id);
     n++;
   }
   revalidatePath(`/process/${processId}`);
-  return n === 0
-    ? { error: "Tag수정(수량)이 입력된 행이 없습니다." }
-    : { ok: true, adjusted: n };
+  return n === 0 ? { error: "보정할 행이 없습니다." } : { ok: true, adjusted: n };
 }
 
 // ───────── Tag 확정 (Module36, 검수 전용): 실중량 있고 Tag중량 비면 Tag중량=Tag ─────────

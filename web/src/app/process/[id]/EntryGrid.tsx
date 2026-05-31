@@ -24,7 +24,15 @@ export function EntryGrid({
   processName: string;
 }) {
   const [rows, setRows] = useState<EntryRow[]>(() => Array.from({ length: 8 }, blank));
-  const [targetId, setTargetId] = useState<string>(targets[0]?.id ?? "");
+  const targets18 = useMemo(() => targets.filter((t) => t.karat === "18K"), [targets]);
+  const targets14 = useMemo(() => targets.filter((t) => t.karat === "14K"), [targets]);
+  const [t18, setT18] = useState<string>(targets18[0]?.id ?? "");
+  const [t14, setT14] = useState<string>(targets14[0]?.id ?? "");
+  const [karat, setKarat] = useState<"18K" | "14K">("18K");
+  const is18 = karat === "18K";
+  const activeTargets = is18 ? targets18 : targets14;
+  const activeTid = is18 ? t18 : t14;
+  const setActiveTid = is18 ? setT18 : setT14;
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
@@ -40,8 +48,9 @@ export function EntryGrid({
       return next;
     });
 
-  const submit = () => {
-    if (!targetId) return setMsg({ kind: "err", text: "대상 공정을 선택하세요." });
+  const submit = (targetId: string) => {
+    if (!targetId) return setMsg({ kind: "err", text: "대상 공정/부서를 선택하세요." });
+    if (filled === 0) return setMsg({ kind: "err", text: "입력된 행이 없습니다." });
     start(async () => {
       const res = await sendRows(sourceProcessId, targetId, rows);
       if (res?.error) setMsg({ kind: "err", text: res.error });
@@ -62,17 +71,27 @@ export function EntryGrid({
         </span>
       </div>
 
-      {/* 전송 바 */}
+      {/* 전송 바 — Karat 토글(18K 붉은/14K 파란) + 단일 보내기 */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <span className="text-xs text-slate-400">대상 공정/부서</span>
-        <select value={targetId} onChange={(e) => setTargetId(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800">
-          {targets.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
+        <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-neutral-700">
+          {(["18K", "14K"] as const).map((k) => (
+            <button key={k} onClick={() => setKarat(k)}
+              className={`rounded-md px-3 py-1 text-sm font-bold transition-colors ${
+                karat === k
+                  ? k === "18K" ? "bg-rose-600 text-white" : "bg-blue-600 text-white"
+                  : "text-slate-400 hover:text-slate-600 dark:hover:text-neutral-200"}`}>
+              {k}
+            </button>
           ))}
+        </div>
+        <span className="text-xs text-slate-400">대상</span>
+        <select value={activeTid} onChange={(e) => setActiveTid(e.target.value)}
+          className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800">
+          {activeTargets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-        <button onClick={submit} disabled={pending || filled === 0}
-          className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-40">
+        <button onClick={() => submit(activeTid)} disabled={pending || filled === 0 || !activeTid}
+          className={`rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-colors disabled:opacity-40 ${
+            is18 ? "bg-rose-600 hover:bg-rose-700" : "bg-blue-600 hover:bg-blue-700"}`}>
           {pending ? "전송 중…" : `보내기 (${filled}건)`}
         </button>
         <button onClick={() => setRows((r) => [...r, blank(), blank(), blank()])}
@@ -88,9 +107,9 @@ export function EntryGrid({
         )}
       </div>
 
-      {/* 입력 그리드 */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <table className="w-full text-xs" onKeyDown={focusNextInput}>
+      {/* 입력 그리드 (콘텐츠 폭 — 화면 가로로 늘어나지 않게) */}
+      <div className="inline-block max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <table className="text-xs" onKeyDown={focusNextInput}>
           <thead>
             <tr className="text-slate-500 dark:text-neutral-400">
               <th className="bg-slate-50 px-3 py-2 dark:bg-neutral-800/60">#</th>

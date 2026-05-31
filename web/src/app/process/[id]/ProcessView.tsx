@@ -11,7 +11,6 @@ import {
   splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm,
 } from "./actions";
 
-type Edits = Record<string, Record<string, number | string | null>>;
 type ActionResult = { error?: string } & Record<string, unknown>;
 type Side = "in" | "out";
 
@@ -82,9 +81,9 @@ function findCombos(
 }
 const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
 
-// ───────── 한 블록 테이블 카드 ─────────
+// ───────── 한 블록 테이블 카드 (표시 전용 — 수정은 모달에서만) ─────────
 function LotTable({
-  title, accent, columns, rows, selected, onToggle, onToggleAll, edits, onEdit, onCommit,
+  title, accent, columns, rows, selected, onToggle, onToggleAll,
 }: {
   title: string;
   accent: string;
@@ -93,16 +92,7 @@ function LotTable({
   selected: Set<string>;
   onToggle: (id: string, on: boolean) => void;
   onToggleAll: (on: boolean) => void;
-  edits: Edits;
-  onEdit: (id: string, key: string, v: string) => void;
-  onCommit: (id: string, key: string) => void;
 }) {
-  const eff = (l: Lot): Lot => ({ ...l, ...(edits[l.id] ?? {}) } as Lot);
-  const editVal = (id: string, key: string, fb: unknown) => {
-    const e = edits[id];
-    const v = e && key in e ? e[key] : fb;
-    return v == null ? "" : String(v);
-  };
   const weightSum = rows.reduce((a, r) => a + (Number(r.weight) || 0), 0);
   const allSel = rows.length > 0 && rows.every((r) => selected.has(r.id));
   // 체크박스 포함 모든 열을 비율(%)로 → table-fixed가 카드 폭에 정확히 맞춰 가로 스크롤 제거
@@ -111,7 +101,9 @@ function LotTable({
   const pct = (w: number) => `${(w / totalW) * 100}%`;
 
   return (
-    <section className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    // flex-grow를 열 합폭(totalW)에 비례 → 열 많은 완료/출고 카드가 더 넓게 배분되어 같은 항목 열이 좌우 동일 px
+    <section style={{ flexGrow: totalW, flexBasis: 0 }}
+      className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-neutral-800">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${accent}`} />
@@ -123,7 +115,7 @@ function LotTable({
         <span className="text-[11px] tabular-nums text-slate-400">중량 합 {fmtWeight(weightSum)}</span>
       </header>
       <div className="max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden print:max-h-none print:overflow-visible">
-        <table className="w-full table-fixed text-[10px] leading-tight" onKeyDown={focusNextInput}>
+        <table className="w-full table-fixed text-[11px] leading-tight" onKeyDown={focusNextInput}>
           <colgroup>
             <col style={{ width: pct(CHK_W) }} />
             {columns.map((c, i) => <col key={i} style={{ width: pct(c.width ?? 60) }} />)}
@@ -133,14 +125,17 @@ function LotTable({
               <th className="sticky top-0 z-10 bg-slate-100 px-1 py-1.5 dark:bg-neutral-800">
                 <input type="checkbox" checked={allSel} onChange={(e) => onToggleAll(e.target.checked)} />
               </th>
-              {columns.map((c, i) => (
-                <th key={i}
-                  className={`sticky top-0 z-10 bg-slate-100 px-1.5 py-1.5 font-medium dark:bg-neutral-800 ${
-                    isNumKind(c.kind) || c.computed ? "text-right" : "text-left"
-                  }`}>
-                  {c.label}
-                </th>
-              ))}
+              {columns.map((c, i) => {
+                // Tag수정/Tag중량/Tag로스 헤더는 폭이 좁아 줄바꿈 → 글자만 축소
+                const tight = c.key === "tag_fixed" || c.key === "tag_weight" || c.key === "tag_loss";
+                return (
+                  <th key={i}
+                    className={`sticky top-0 z-10 bg-slate-100 py-1.5 text-center font-medium dark:bg-neutral-800 ${
+                      tight ? "whitespace-nowrap px-0.5 text-[9px]" : "px-1.5"}`}>
+                    {c.label}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -150,7 +145,6 @@ function LotTable({
             ) : (
               rows.map((r, ri) => {
                 const checked = selected.has(r.id);
-                const e = eff(r);
                 return (
                   <tr key={r.id}
                     className={`border-t border-slate-100 dark:border-neutral-800 ${
@@ -167,28 +161,15 @@ function LotTable({
                       if (c.computed)
                         return (
                           <td key={i} className={`break-words px-1.5 py-1 text-slate-500 dark:text-neutral-400 ${align}`}>
-                            {computedValue(c, e)}
+                            {computedValue(c, r)}
                           </td>
                         );
-                      if (c.editable && !r.locked) {
-                        const key = c.key as string;
-                        const cls = "w-full rounded bg-transparent px-1.5 py-0.5 outline-none focus:bg-blue-50 focus:ring-1 focus:ring-blue-300 dark:focus:bg-blue-950/40";
-                        return (
-                          <td key={i} className="px-0.5 py-0.5">
-                            {isNumKind(c.kind) ? (
-                              <NumberInput value={editVal(r.id, key, r[c.key])} kind={c.kind as "int" | "weight"}
-                                onChange={(v) => onEdit(r.id, key, v)} onBlurExtra={() => onCommit(r.id, key)} className={cls} />
-                            ) : (
-                              <input value={editVal(r.id, key, r[c.key])} type={c.kind === "date" ? "date" : "text"}
-                                onChange={(ev) => onEdit(r.id, key, ev.target.value)} onBlur={() => onCommit(r.id, key)}
-                                className={`${cls} ${numeric ? "text-right" : ""}`} />
-                            )}
-                          </td>
-                        );
-                      }
-                      const locked = c.key === "serial" && r.locked;
+                      const isSerial = c.key === "serial";
+                      const locked = isSerial && r.locked;
+                      // 일련번호는 줄바꿈 없이 길면 …처리(호버 title로 전체 표시), 나머지는 줄바꿈 허용
+                      const cellCls = isSerial ? "truncate" : "break-words";
                       return (
-                        <td key={i} className={`break-words px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
+                        <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
                           {locked && <span className="mr-1">🔒</span>}
                           {fmtCell(r[c.key], c.kind)}
                         </td>
@@ -213,16 +194,29 @@ function EditPanel({
   onSave: (patch: Record<string, number | string | null>) => void;
   onClose: () => void; pending: boolean;
 }) {
+  // 모달에서는 모든 입력 칸 수정 가능(표 인라인만 잠금). 계산칸·시간·현황만 제외.
   const fields = columns.filter(
     (c) => !c.computed && c.kind !== "datetime" && c.kind !== "status",
   );
+  const computedCols = columns.filter((c) => c.computed); // 출고중량 / 로스 / 로스율
   const init: Record<string, string> = {};
   for (const c of fields) {
     const v = row[c.key];
-    init[c.key as string] = v == null ? "" : c.kind === "date" ? String(v).slice(0, 10) : String(v);
+    init[c.key as string] = v == null ? ""
+      : c.kind === "date" ? String(v).slice(0, 10)
+      : c.kind === "weight" && !isNaN(Number(v)) ? Number(v).toFixed(2) // 소수 2자리 일관 표시
+      : String(v);
   }
   const [vals, setVals] = useState<Record<string, string>>(init);
   const set = (k: string, v: string) => setVals((p) => ({ ...p, [k]: v }));
+
+  // 현재 입력값을 반영한 가상 Lot → 출고중량/로스 실시간 계산
+  const eff = { ...row } as unknown as Record<string, unknown>;
+  for (const c of fields) {
+    const raw = vals[c.key as string];
+    eff[c.key as string] =
+      raw === "" || raw == null ? null : isNumKind(c.kind) ? Number(raw) : raw;
+  }
 
   const save = () => {
     const patch: Record<string, number | string | null> = {};
@@ -262,6 +256,17 @@ function EditPanel({
           );
         })}
         </div>
+        {/* 자동 계산 미리보기 — 수정값 기준 (출고중량 / 로스 / 로스율) */}
+        {computedCols.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-neutral-800">
+            {computedCols.map((c, i) => (
+              <div key={i} className="rounded-lg bg-slate-50 px-3 py-1.5 text-sm dark:bg-neutral-800">
+                <span className="text-[11px] text-slate-400">{c.label}</span>{" "}
+                <b className="tabular-nums">{computedValue(c, eff as unknown as Lot) || "—"}</b>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -355,6 +360,129 @@ function SplitModal({
   );
 }
 
+// ───────── 작업완료(집계) 모달 — 작업후 중량 입력 ─────────
+//  작업전(P) = 선택 작업중행 중량(K) 합. 작업후(Q) 입력 → 로스 = 작업전 − 작업후.
+function CompleteModal({
+  rows, onConfirm, onClose, pending,
+}: {
+  rows: Lot[];
+  onConfirm: (after: number | null) => void;
+  onClose: () => void; pending: boolean;
+}) {
+  const before = round2(rows.reduce((a, r) => a + (Number(r.weight) || 0), 0));
+  const [after, setAfter] = useState("");
+  const a = after === "" ? null : Number(after);
+  const loss = a == null ? null : round2(before - a);
+  const lossRate = a == null || !before ? null : (1 - a / before) * 100;
+  const inp = "w-full rounded-md border border-slate-200 px-2 py-1.5 text-base dark:border-neutral-700 dark:bg-neutral-900";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold">작업완료(집계)</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm dark:bg-neutral-800">
+          <div className="flex justify-between"><span className="text-slate-400">집계 건수</span><b>{rows.length}건</b></div>
+          <div className="mt-1 flex justify-between"><span className="text-slate-400">작업전(중량 합)</span><b className="tabular-nums">{fmtWeight(before)}</b></div>
+        </div>
+        <label className="block" onKeyDown={focusNextInput}>
+          <span className="text-[11px] text-slate-400">작업후 중량</span>
+          <NumberInput value={after} kind="weight" onChange={setAfter} className={inp} />
+        </label>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <div className="rounded-lg bg-slate-50 p-2 dark:bg-neutral-800">
+            로스 <b className="tabular-nums">{loss == null ? "—" : fmtWeight(loss)}</b>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-2 dark:bg-neutral-800">
+            로스율 <b className="tabular-nums">{lossRate == null ? "—" : lossRate.toFixed(1) + "%"}</b>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400">※ 작업후를 비워두면 나중에 행 수정에서 입력할 수 있습니다.</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+          <button onClick={() => onConfirm(a)} disabled={pending}
+            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">집계 완료</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────── Tag 보정 모달 (Module14) — 행별 잔여 Tag 수량 입력 ─────────
+//  Tag중량 = ROUNDDOWN(잔여수량 × 0.035, 2), Tag로스 = Tag − Tag중량, 출고중량 = 수식 자동
+function TagAdjustModal({
+  rows, onConfirm, onClose, pending,
+}: {
+  rows: Lot[];
+  onConfirm: (items: { id: string; qty: number }[]) => void;
+  onClose: () => void; pending: boolean;
+}) {
+  const [qtys, setQtys] = useState<Record<string, string>>({});
+  const set = (id: string, v: string) => setQtys((p) => ({ ...p, [id]: v }));
+  const twOf = (q: number) => Math.floor(q * 0.035 * 100) / 100;       // ROUNDDOWN 2자리
+  const items = rows
+    .map((r) => ({ id: r.id, qty: qtys[r.id] === "" || qtys[r.id] == null ? NaN : Number(qtys[r.id]) }))
+    .filter((it) => !Number.isNaN(it.qty));
+  const inp = "w-24 rounded-md border border-slate-200 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold">Tag 보정 <span className="text-sm font-normal text-slate-400">· 잔여 Tag 수량 입력</span></h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <table className="w-full text-sm" onKeyDown={focusNextInput}>
+          <thead>
+            <tr className="text-[11px] text-slate-400">
+              <th className="px-2 py-1 text-left">일련번호</th>
+              <th className="px-2 py-1 text-left">내역</th>
+              <th className="px-2 py-1 text-right">Tag</th>
+              <th className="px-2 py-1 text-center">잔여 수량</th>
+              <th className="px-2 py-1 text-right">Tag중량</th>
+              <th className="px-2 py-1 text-right">Tag로스</th>
+              <th className="px-2 py-1 text-right">출고중량</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const raw = qtys[r.id];
+              const has = raw !== "" && raw != null && !Number.isNaN(Number(raw));
+              const tw = has ? twOf(Number(raw)) : null;
+              const tl = tw == null ? null : round2(Number(r.tag ?? 0) - tw);
+              const ship = tw == null ? null
+                : shipWeight({ ...r, tag_weight: tw, tag_loss: tl } as Lot);
+              return (
+                <tr key={r.id} className="border-t border-slate-100 dark:border-neutral-800">
+                  <td className="px-2 py-1">{r.serial ?? "(번호없음)"}</td>
+                  <td className="px-2 py-1 text-slate-500">{r.description ?? ""}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{fmtWeight(r.tag)}</td>
+                  <td className="px-2 py-1 text-center">
+                    <NumberInput value={raw ?? ""} kind="weight" onChange={(v) => set(r.id, v)} className={inp} />
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums">{tw == null ? "—" : fmtWeight(tw)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{tl == null ? "—" : fmtWeight(tl)}</td>
+                  <td className="px-2 py-1 text-right font-medium tabular-nums">{ship == null ? "—" : fmtWeight(ship)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <span className="mr-auto text-xs text-slate-400">{items.length}/{rows.length}건 입력됨</span>
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+          <button onClick={() => onConfirm(items)} disabled={pending || items.length === 0}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">보정 적용</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ───────── 버튼 ─────────
 function Btn({
   children, onClick, disabled, tone = "default",
@@ -406,12 +534,13 @@ export function ProcessView({
   const isWork = process.schema_type === "work";
   const [selIn, setSelIn] = useState<Set<string>>(new Set());
   const [selOut, setSelOut] = useState<Set<string>>(new Set());
-  const [edits, setEdits] = useState<Edits>({});
   const [splitN, setSplitN] = useState(2);
   const [editId, setEditId] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [combos, setCombos] = useState<Combo[]>([]);
   const [splitRowId, setSplitRowId] = useState<string | null>(null);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [tagAdjustOpen, setTagAdjustOpen] = useState(false);
   const [pending, start] = useTransition();
 
   // 토스트 + 확인 토스트
@@ -463,15 +592,6 @@ export function ProcessView({
   };
   const clearSel = () => { setSelIn(new Set()); setSelOut(new Set()); };
 
-  const onEdit = (id: string, key: string, raw: string) =>
-    setEdits((p) => ({ ...p, [id]: { ...p[id], [key]: raw === "" ? null : raw } }));
-  const onCommit = (id: string, key: string) => {
-    const v = edits[id]?.[key];
-    const col = [...cols.in, ...cols.out].find((c) => c.key === key);
-    const val = v == null ? null : isNumKind(col?.kind ?? "") ? Number(v) : v;
-    start(async () => { await updateLot(process.id, id, { [key]: val }); });
-  };
-
   const run = (fn: () => Promise<ActionResult>, ok: (r: ActionResult) => string) =>
     start(async () => {
       const res = await fn();
@@ -483,16 +603,18 @@ export function ProcessView({
   const inIds = [...selIn], outIds = [...selOut];
   const nIn = inIds.length, nOut = outIds.length;
   const selectedLocked = [...inIds, ...outIds].filter((id) => lockedSet.has(id));
+  const selInRows = inRows.filter((r) => selIn.has(r.id));
+  const selOutRows = outRows.filter((r) => selOut.has(r.id));
 
   // 선택 행들의 중량 합 (좌·우 배타라 한쪽만 값)
   const selWeight = round2(
-    inRows.filter((r) => selIn.has(r.id)).reduce((a, r) => a + (Number(r.weight) || 0), 0) +
-    outRows.filter((r) => selOut.has(r.id)).reduce((a, r) => a + (Number(r.weight) || 0), 0),
+    selInRows.reduce((a, r) => a + (Number(r.weight) || 0), 0) +
+    selOutRows.reduce((a, r) => a + (Number(r.weight) || 0), 0),
   );
 
   // 목표 중량 조합 찾기 (작업중/입고 미완료 행 대상)
   const runFind = () => {
-    const t = Number(target);
+    const t = Number(target.replace(/,/g, ""));
     if (!t) { notify("info", "목표 중량을 입력하세요."); return; }
     const items = inRows
       .filter((r) => !r.locked && Number(r.weight) > 0)
@@ -542,7 +664,7 @@ export function ProcessView({
           {isWork ? (
             <>
               <Btn tone="primary" disabled={pending || nIn === 0}
-                onClick={() => run(() => completeLots(process.id, inIds), (r) => `작업완료 (${r.merged}건 → ${r.serial})`)}>
+                onClick={() => setCompleteOpen(true)}>
                 작업완료(집계)
               </Btn>
             </>
@@ -565,9 +687,16 @@ export function ProcessView({
           {/* 목표중량 조합 찾기 (공정 전용) */}
           {isWork && (
             <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
-              <input type="number" step="0.01" placeholder="목표중량" value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                className="w-20 rounded-md bg-white px-2 py-1 text-right text-xs dark:bg-neutral-900" />
+              <input value={target} inputMode="decimal" placeholder="목표중량"
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, "");
+                  if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) setTarget(raw);
+                }}
+                onBlur={() => {
+                  const n = Number(target.replace(/,/g, ""));
+                  if (target !== "" && !isNaN(n)) setTarget(fmtWeight(n));
+                }}
+                className="w-24 rounded-md bg-white px-2 py-1 text-center text-xs tabular-nums dark:bg-neutral-900" />
               <Btn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</Btn>
             </div>
           )}
@@ -591,7 +720,7 @@ export function ProcessView({
           ) : (
             <>
               <Btn tone="indigo" disabled={pending || nOut === 0}
-                onClick={() => run(() => tagAdjust(process.id, outIds), (r) => `Tag 보정 ${r.adjusted}건`)}>
+                onClick={() => setTagAdjustOpen(true)}>
                 Tag 보정
               </Btn>
               {process.is_inspection && (
@@ -629,7 +758,7 @@ export function ProcessView({
         {/* 조합 찾기 결과 (공정 전용) */}
         {isWork && combos.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 dark:border-neutral-800">
-            <span className="text-xs text-slate-400">목표 {fmtWeight(target)} 근사 조합</span>
+            <span className="text-xs text-slate-400">목표 {fmtWeight(target.replace(/,/g, ""))} 근사 조합</span>
             {combos.map((c, i) => (
               <button key={i} onClick={() => pickCombo(c)}
                 className="rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs text-teal-800 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-200">
@@ -661,21 +790,42 @@ export function ProcessView({
           })} />
       )}
 
+      {/* 작업완료(집계) 모달 — 작업후 중량 입력 */}
+      {completeOpen && (
+        <CompleteModal rows={selInRows} pending={pending}
+          onClose={() => setCompleteOpen(false)}
+          onConfirm={(after) => start(async () => {
+            const res = await completeLots(process.id, inIds, after);
+            if (res?.error) notify("err", res.error);
+            else { notify("ok", `작업완료 (${res.merged}건 → ${res.serial})`); setCompleteOpen(false); clearSel(); }
+          })} />
+      )}
+
+      {/* Tag 보정 모달 — 잔여 Tag 수량 입력 */}
+      {tagAdjustOpen && (
+        <TagAdjustModal rows={selOutRows} pending={pending}
+          onClose={() => setTagAdjustOpen(false)}
+          onConfirm={(items) => start(async () => {
+            const res = await tagAdjust(process.id, items);
+            if (res?.error) notify("err", res.error);
+            else { notify("ok", `Tag 보정 ${res.adjusted}건`); setTagAdjustOpen(false); clearSel(); }
+          })} />
+      )}
+
       {/* 두 블록 (적응형: 좁으면 세로, 27"급은 가로) */}
       <div className="flex flex-col gap-3 2xl:flex-row">
         <LotTable title={isWork ? "작업중" : "입고"} accent="bg-emerald-500"
           columns={cols.in} rows={inRows} selected={selIn}
-          onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)}
-          edits={edits} onEdit={onEdit} onCommit={onCommit} />
+          onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)} />
         <LotTable title={isWork ? "완료" : "출고"} accent="bg-rose-500"
           columns={cols.out} rows={outRows} selected={selOut}
-          onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)}
-          edits={edits} onEdit={onEdit} onCommit={onCommit} />
+          onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)} />
       </div>
 
       <p className="text-[11px] text-slate-400 print:hidden">
         ※ 좌·우는 동시 선택 불가(흐름 로직이 다름). 일련번호는 이동해도 유지(집계·분할 시에만 형태 변경).
-        처리행은 🔒 잠금 — 맨 오른쪽 버튼으로 해제·삭제. 완료/출고측 작업후·실중량·Tag는 직접 입력 → 자동 계산.
+        처리행은 🔒 잠금 — 맨 오른쪽 버튼으로 해제·삭제. 표는 보기 전용 — 수정은 ✏️ 행 수정·Tag 보정 모달에서만.
+        작업후=집계 모달 입력, 실중량=이전 파트 이월, Tag중량/로스/출고중량=자동 계산.
       </p>
 
       {/* 토스트 (화면 정중앙, 크게) */}

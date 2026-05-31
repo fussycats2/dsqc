@@ -11,6 +11,7 @@ export function NumberInput({
   kind,
   align = "right",
   className = "",
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -18,12 +19,14 @@ export function NumberInput({
   kind: "int" | "weight";
   align?: "left" | "right";
   className?: string;
+  placeholder?: string;
 }) {
   const pat = kind === "int" ? /^\d*$/ : /^\d*\.?\d{0,2}$/;
 
   return (
     <input
       value={value}
+      placeholder={placeholder}
       inputMode={kind === "int" ? "numeric" : "decimal"}
       onChange={(e) => {
         const raw = e.target.value;

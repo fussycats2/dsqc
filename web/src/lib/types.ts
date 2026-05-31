@@ -50,85 +50,85 @@ export interface ColDef {
   label: string;
   kind: CellKind;
   width?: number;
-  editable?: boolean;                          // 수동 입력 칸
-  computed?: "loss" | "lossRate" | "ship";     // 자동 계산 표시 칸
+  computed?: "loss" | "lossRate" | "ship";     // 자동 계산 표시 칸(표·모달 미리보기)
 }
 
 // ───────── io 계열 (일반공정 + 검수) ─────────
 // 입고블록 A:K, 출고블록 L:Y
+// 공통 항목 폭(좌/우 동일): 내역 축소, 수량·Tag·Q·납기·원중량·비고는 살짝 키움
+//  · 카드 폭을 열 합폭에 비례 배분(ProcessView)하므로 같은 nominal 폭이면 좌/우 같은 px로 렌더 → 일련번호도 동일값
 const IO_IN: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 104 },
-  { key: "description", label: "내역", kind: "text", width: 132 },
-  { key: "qty", label: "수량", kind: "int", width: 44 },
-  { key: "weight", label: "중량", kind: "weight", width: 58 },
-  { key: "tag", label: "Tag", kind: "weight", width: 48 },
-  { key: "q", label: "Q", kind: "weight", width: 40 },
-  { key: "due_date", label: "납기", kind: "date", width: 46 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 54 },
-  { key: "note", label: "비고", kind: "text", width: 56 },
-  { key: "moved_at", label: "투입시간", kind: "datetime", width: 88 },
-  { key: "moved_to_name", label: "투입부서", kind: "text", width: 72 },
+  { key: "serial", label: "일련번호", kind: "text", width: 120 },
+  { key: "description", label: "내역", kind: "text", width: 100 },
+  { key: "qty", label: "수량", kind: "int", width: 48 },
+  { key: "weight", label: "중량", kind: "weight", width: 64 },
+  { key: "tag", label: "Tag", kind: "weight", width: 56 },
+  { key: "q", label: "Q", kind: "weight", width: 48 },
+  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "note", label: "비고", kind: "text", width: 66 },
+  { key: "moved_at", label: "투입시간", kind: "datetime", width: 86 },
+  { key: "moved_to_name", label: "투입부서", kind: "text", width: 76 },
 ];
 const IO_OUT: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 116 },
-  { key: "description", label: "내역", kind: "text", width: 132 },
-  { key: "qty", label: "수량", kind: "int", width: 44 },
-  { key: "weight", label: "실중량", kind: "weight", width: 58, editable: true },
-  { key: "tag", label: "Tag", kind: "weight", width: 48, editable: true },
-  { key: "q", label: "Q", kind: "weight", width: 40, editable: true },
-  { key: "due_date", label: "납기", kind: "date", width: 46 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 54, editable: true },
-  { key: "note", label: "비고", kind: "text", width: 56, editable: true },
-  { key: "prev_part_name", label: "이전파트", kind: "text", width: 84 },
-  { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 58, editable: true },
-  { key: "tag_weight", label: "Tag중량", kind: "weight", width: 58, editable: true },
-  { key: "tag_loss", label: "Tag로스", kind: "weight", width: 58, editable: true },
-  { key: "weight", label: "출고중량", kind: "weight", width: 60, computed: "ship" },
+  { key: "serial", label: "일련번호", kind: "text", width: 120 },  // 입고와 동일(카드 비례배분으로 같은 px)
+  { key: "description", label: "내역", kind: "text", width: 100 },
+  { key: "qty", label: "수량", kind: "int", width: 48 },
+  { key: "weight", label: "실중량", kind: "weight", width: 64 },   // 표=이전파트 이월(읽기), 모달=수정 가능
+  { key: "tag", label: "Tag", kind: "weight", width: 56 },
+  { key: "q", label: "Q", kind: "weight", width: 48 },
+  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "note", label: "비고", kind: "text", width: 66 },
+  { key: "prev_part_name", label: "이전파트", kind: "text", width: 86 },
+  { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 56 },  // 표=Tag보정 모달 전용, 모달=수정 가능
+  { key: "tag_weight", label: "Tag중량", kind: "weight", width: 56 }, // Tag보정=ROUNDDOWN 자동
+  { key: "tag_loss", label: "Tag로스", kind: "weight", width: 56 },   // Tag보정=Tag−Tag중량 자동
+  { key: "weight", label: "출고중량", kind: "weight", width: 66, computed: "ship" },
 ];
 
 // ───────── work 계열 (연마·뻥·빠우) ─────────
-// 작업중블록 A:L (A=현황), 완료블록 M:Z
+// 작업중블록(완료블록 M:Z) — 현황(A) 열은 제거: 잠금=완료/미잠금=재고로 구분
 const WORK_IN: ColDef[] = [
-  { key: "status", label: "현황", kind: "status", width: 44 },
-  { key: "serial", label: "일련번호", kind: "text", width: 104 },
-  { key: "description", label: "내역", kind: "text", width: 128 },
-  { key: "qty", label: "수량", kind: "int", width: 44 },
-  { key: "weight_in", label: "입중량", kind: "weight", width: 56 },
-  { key: "tag", label: "Tag", kind: "weight", width: 48 },
-  { key: "q", label: "Q", kind: "weight", width: 40 },
-  { key: "due_date", label: "납기", kind: "date", width: 46 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 54 },
-  { key: "note", label: "비고", kind: "text", width: 56 },
-  { key: "weight", label: "중량", kind: "weight", width: 56 },
-  { key: "prev_part_name", label: "이전파트", kind: "text", width: 112 },
+  { key: "serial", label: "일련번호", kind: "text", width: 120 },
+  { key: "description", label: "내역", kind: "text", width: 100 },
+  { key: "qty", label: "수량", kind: "int", width: 48 },
+  { key: "weight_in", label: "입중량", kind: "weight", width: 64 },
+  { key: "tag", label: "Tag", kind: "weight", width: 56 },
+  { key: "q", label: "Q", kind: "weight", width: 48 },
+  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "note", label: "비고", kind: "text", width: 66 },
+  { key: "weight", label: "중량", kind: "weight", width: 64 },
+  { key: "prev_part_name", label: "이전파트", kind: "text", width: 104 },
 ];
 const WORK_OUT: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 116 },
-  { key: "description", label: "내역", kind: "text", width: 128 },
-  { key: "qty", label: "수량", kind: "int", width: 44 },
-  { key: "weight_before", label: "작업전", kind: "weight", width: 56 },
-  { key: "weight", label: "작업후", kind: "weight", width: 56, editable: true },
-  { key: "weight", label: "로스", kind: "weight", width: 50, computed: "loss" },
-  { key: "weight", label: "로스율", kind: "weight", width: 52, computed: "lossRate" },
-  { key: "tag", label: "Tag", kind: "weight", width: 48 },
-  { key: "q", label: "Q", kind: "weight", width: 40 },
-  { key: "due_date", label: "납기", kind: "date", width: 46 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 54 },
-  { key: "note", label: "비고", kind: "text", width: 56 },
-  { key: "moved_at", label: "이관/출고시간", kind: "datetime", width: 88 },
+  { key: "serial", label: "일련번호", kind: "text", width: 120 },  // 작업중과 동일(카드 비례배분으로 같은 px)
+  { key: "description", label: "내역", kind: "text", width: 100 },
+  { key: "qty", label: "수량", kind: "int", width: 48 },
+  { key: "weight_before", label: "작업전", kind: "weight", width: 64 }, // 표=집계 합(읽기), 모달=수정 가능
+  { key: "weight", label: "작업후", kind: "weight", width: 64 },
+  { key: "weight", label: "로스", kind: "weight", width: 56, computed: "loss" },
+  { key: "weight", label: "로스율", kind: "weight", width: 58, computed: "lossRate" },
+  { key: "tag", label: "Tag", kind: "weight", width: 56 },
+  { key: "q", label: "Q", kind: "weight", width: 48 },
+  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "note", label: "비고", kind: "text", width: 66 },
+  { key: "moved_at", label: "이관/출고시간", kind: "datetime", width: 96 },
   { key: "moved_to_name", label: "이관파트", kind: "text", width: 100 },
 ];
 
 // ───────── 작성 (entry) B:I ─────────
 const ENTRY_IN: ColDef[] = [
-  { key: "description", label: "내역", kind: "text", width: 110 },
-  { key: "qty", label: "수량", kind: "int", width: 70 },
-  { key: "weight", label: "중량", kind: "weight", width: 90 },
-  { key: "tag", label: "Tag", kind: "weight", width: 80 },
-  { key: "q", label: "Q", kind: "weight", width: 60 },
-  { key: "due_date", label: "납기", kind: "date", width: 130 },
-  { key: "raw_weight", label: "원중량(수리)", kind: "weight", width: 100 },
-  { key: "note", label: "비고", kind: "text", width: 110 },
+  { key: "description", label: "내역", kind: "text", width: 96 },
+  { key: "qty", label: "수량", kind: "int", width: 52 },
+  { key: "weight", label: "중량", kind: "weight", width: 64 },
+  { key: "tag", label: "Tag", kind: "weight", width: 56 },
+  { key: "q", label: "Q", kind: "weight", width: 48 },
+  { key: "due_date", label: "납기", kind: "date", width: 76 },
+  { key: "raw_weight", label: "원중량(수리)", kind: "weight", width: 80 },
+  { key: "note", label: "비고", kind: "text", width: 88 },
 ];
 
 export const COLUMNS: Record<SchemaType, { in: ColDef[]; out: ColDef[] }> = {
