@@ -1,27 +1,32 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ColDef, Lot, Process } from "@/lib/types";
-import { fmtWeight, lossOf, lossRateOf, shipWeight } from "@/lib/types";
+import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight } from "@/lib/types";
 import { NumberInput } from "@/components/NumberInput";
+import { focusNextInput } from "@/lib/enterNav";
 import {
-  completeLots,
-  transferInbound,
-  transferOutbound,
-  splitLot,
-  deleteLots,
-  updateLot,
+  completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
+  splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm,
 } from "./actions";
 
-type Edits = Record<string, Record<string, number | null>>;
+type Edits = Record<string, Record<string, number | string | null>>;
+type ActionResult = { error?: string } & Record<string, unknown>;
+type Side = "in" | "out";
 
-function fmt(v: unknown, kind: string) {
+// ───────── 표시 헬퍼 (모듈 스코프 = 안정, 입력 포커스 유지) ─────────
+function fmtCell(v: unknown, kind: string): string {
   if (v === null || v === undefined || v === "") return "";
-  if (kind === "date") return String(v).slice(0, 10);
+  if (kind === "date") return String(v).slice(5, 10);          // 납기: MM-DD (연도 제거)
+  if (kind === "datetime") {                                   // 출고시간: 일 HH:MM (월 제거)
+    const s = String(v);
+    return `${s.slice(8, 10)} ${s.slice(11, 16)}`;
+  }
   if (kind === "weight") return fmtWeight(v);
+  if (kind === "int") return fmtInt(v);
   return String(v);
 }
-
 function computedValue(c: ColDef, lot: Lot): string {
   if (c.computed === "loss") return fmtWeight(lossOf(lot));
   if (c.computed === "ship") return fmtWeight(shipWeight(lot));
@@ -31,312 +36,681 @@ function computedValue(c: ColDef, lot: Lot): string {
   }
   return "";
 }
+const isNumKind = (k: string) => k === "weight" || k === "int";
+
+// 목표 중량에 가장 근사한 조합(2개 이상) 찾기 — 작업중 weight(중량) 기준
+//  분기한정 DFS(오름차순 정렬 + 초과 가지치기 + 노드/크기 상한)로 상위 N개 반환
+type Combo = { ids: string[]; sum: number; diff: number };
+function findCombos(
+  items: { id: string; w: number }[],
+  target: number,
+  topN = 5,
+  maxSize = 10,
+): Combo[] {
+  const arr = items.filter((it) => it.w > 0).sort((a, b) => a.w - b.w);
+  const n = arr.length;
+  const best: Combo[] = [];
+  let worst = Infinity;
+  let nodes = 0;
+  const CAP = 1_500_000;
+  const cur: number[] = [];
+
+  const consider = (sum: number) => {
+    if (cur.length < 2) return;
+    const diff = Math.abs(sum - target);
+    if (best.length < topN || diff < worst) {
+      best.push({ ids: cur.map((i) => arr[i].id), sum: round2(sum), diff: round2(diff) });
+      best.sort((a, b) => a.diff - b.diff || a.ids.length - b.ids.length);
+      if (best.length > topN) best.pop();
+      worst = best[best.length - 1].diff;
+    }
+  };
+  const dfs = (i: number, sum: number) => {
+    if (nodes++ > CAP || i >= n) return;
+    if (cur.length < maxSize) {
+      const ns = sum + arr[i].w;
+      cur.push(i);
+      consider(ns);
+      // 초과 가지치기: 이미 target+worst 초과면 더 더해도 악화 → 포함 분기 중단
+      if (!(ns - target > worst && ns >= target)) dfs(i + 1, ns);
+      cur.pop();
+    }
+    dfs(i + 1, sum); // 미포함
+  };
+  dfs(0, 0);
+  return best.sort((a, b) => a.diff - b.diff || a.ids.length - b.ids.length);
+}
+const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+
+// ───────── 한 블록 테이블 카드 ─────────
+function LotTable({
+  title, accent, columns, rows, selected, onToggle, onToggleAll, edits, onEdit, onCommit,
+}: {
+  title: string;
+  accent: string;
+  columns: ColDef[];
+  rows: Lot[];
+  selected: Set<string>;
+  onToggle: (id: string, on: boolean) => void;
+  onToggleAll: (on: boolean) => void;
+  edits: Edits;
+  onEdit: (id: string, key: string, v: string) => void;
+  onCommit: (id: string, key: string) => void;
+}) {
+  const eff = (l: Lot): Lot => ({ ...l, ...(edits[l.id] ?? {}) } as Lot);
+  const editVal = (id: string, key: string, fb: unknown) => {
+    const e = edits[id];
+    const v = e && key in e ? e[key] : fb;
+    return v == null ? "" : String(v);
+  };
+  const weightSum = rows.reduce((a, r) => a + (Number(r.weight) || 0), 0);
+  const allSel = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  // 체크박스 포함 모든 열을 비율(%)로 → table-fixed가 카드 폭에 정확히 맞춰 가로 스크롤 제거
+  const CHK_W = 22;
+  const totalW = CHK_W + columns.reduce((a, c) => a + (c.width ?? 60), 0);
+  const pct = (w: number) => `${(w / totalW) * 100}%`;
+
+  return (
+    <section className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-neutral-800">
+        <div className="flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 rounded-full ${accent}`} />
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+            {rows.length}건
+          </span>
+        </div>
+        <span className="text-[11px] tabular-nums text-slate-400">중량 합 {fmtWeight(weightSum)}</span>
+      </header>
+      <div className="max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden print:max-h-none print:overflow-visible">
+        <table className="w-full table-fixed text-[10px] leading-tight" onKeyDown={focusNextInput}>
+          <colgroup>
+            <col style={{ width: pct(CHK_W) }} />
+            {columns.map((c, i) => <col key={i} style={{ width: pct(c.width ?? 60) }} />)}
+          </colgroup>
+          <thead>
+            <tr className="text-slate-500 dark:text-neutral-400">
+              <th className="sticky top-0 z-10 bg-slate-100 px-1 py-1.5 dark:bg-neutral-800">
+                <input type="checkbox" checked={allSel} onChange={(e) => onToggleAll(e.target.checked)} />
+              </th>
+              {columns.map((c, i) => (
+                <th key={i}
+                  className={`sticky top-0 z-10 bg-slate-100 px-1.5 py-1.5 font-medium dark:bg-neutral-800 ${
+                    isNumKind(c.kind) || c.computed ? "text-right" : "text-left"
+                  }`}>
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={columns.length + 1}
+                className="px-3 py-8 text-center text-slate-300 dark:text-neutral-600">데이터 없음</td></tr>
+            ) : (
+              rows.map((r, ri) => {
+                const checked = selected.has(r.id);
+                const e = eff(r);
+                return (
+                  <tr key={r.id}
+                    className={`border-t border-slate-100 dark:border-neutral-800 ${
+                      checked ? "bg-blue-50/70 dark:bg-blue-950/40"
+                        : ri % 2 ? "bg-slate-50/40 dark:bg-neutral-900/60" : ""
+                    } ${r.locked ? "opacity-50" : "hover:bg-amber-50/60 dark:hover:bg-neutral-800/60"}`}>
+                    <td className="px-1 py-0.5 text-center">
+                      <input type="checkbox" checked={checked}
+                        onChange={(ev) => onToggle(r.id, ev.target.checked)} />
+                    </td>
+                    {columns.map((c, i) => {
+                      const numeric = isNumKind(c.kind) || !!c.computed;
+                      const align = numeric ? "text-right tabular-nums" : "";
+                      if (c.computed)
+                        return (
+                          <td key={i} className={`break-words px-1.5 py-1 text-slate-500 dark:text-neutral-400 ${align}`}>
+                            {computedValue(c, e)}
+                          </td>
+                        );
+                      if (c.editable && !r.locked) {
+                        const key = c.key as string;
+                        const cls = "w-full rounded bg-transparent px-1.5 py-0.5 outline-none focus:bg-blue-50 focus:ring-1 focus:ring-blue-300 dark:focus:bg-blue-950/40";
+                        return (
+                          <td key={i} className="px-0.5 py-0.5">
+                            {isNumKind(c.kind) ? (
+                              <NumberInput value={editVal(r.id, key, r[c.key])} kind={c.kind as "int" | "weight"}
+                                onChange={(v) => onEdit(r.id, key, v)} onBlurExtra={() => onCommit(r.id, key)} className={cls} />
+                            ) : (
+                              <input value={editVal(r.id, key, r[c.key])} type={c.kind === "date" ? "date" : "text"}
+                                onChange={(ev) => onEdit(r.id, key, ev.target.value)} onBlur={() => onCommit(r.id, key)}
+                                className={`${cls} ${numeric ? "text-right" : ""}`} />
+                            )}
+                          </td>
+                        );
+                      }
+                      const locked = c.key === "serial" && r.locked;
+                      return (
+                        <td key={i} className={`break-words px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
+                          {locked && <span className="mr-1">🔒</span>}
+                          {fmtCell(r[c.key], c.kind)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+// ───────── 인라인 수정 패널 (새창 아님, 카드형) ─────────
+function EditPanel({
+  row, columns, onSave, onClose, pending,
+}: {
+  row: Lot; columns: ColDef[];
+  onSave: (patch: Record<string, number | string | null>) => void;
+  onClose: () => void; pending: boolean;
+}) {
+  const fields = columns.filter(
+    (c) => !c.computed && c.kind !== "datetime" && c.kind !== "status",
+  );
+  const init: Record<string, string> = {};
+  for (const c of fields) {
+    const v = row[c.key];
+    init[c.key as string] = v == null ? "" : c.kind === "date" ? String(v).slice(0, 10) : String(v);
+  }
+  const [vals, setVals] = useState<Record<string, string>>(init);
+  const set = (k: string, v: string) => setVals((p) => ({ ...p, [k]: v }));
+
+  const save = () => {
+    const patch: Record<string, number | string | null> = {};
+    for (const c of fields) {
+      const raw = vals[c.key as string];
+      patch[c.key as string] = raw === "" ? null : isNumKind(c.kind) ? Number(raw) : raw;
+    }
+    onSave(patch);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-bold">✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></h3>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs dark:border-neutral-600">취소</button>
+            <button onClick={save} disabled={pending}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">저장</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" onKeyDown={focusNextInput}>
+        {fields.map((c) => {
+          const key = c.key as string;
+          const cls = "w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
+          return (
+            <label key={key} className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-neutral-400">{c.label}</span>
+              {isNumKind(c.kind) ? (
+                <NumberInput value={vals[key]} kind={c.kind as "int" | "weight"} onChange={(v) => set(key, v)} className={cls} />
+              ) : (
+                <input value={vals[key]} type={c.kind === "date" ? "date" : "text"}
+                  onChange={(e) => set(key, e.target.value)} className={cls} />
+              )}
+            </label>
+          );
+        })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────── 나누기 모달 (어두운 배경 크게보기, 합계 강제 검증) ─────────
+function SplitModal({
+  row, initialN, onConfirm, onClose, pending,
+}: {
+  row: Lot; initialN: number;
+  onConfirm: (parts: { qty: number | null; weight: number | null }[]) => void;
+  onClose: () => void; pending: boolean;
+}) {
+  const origQty = row.qty, origWeight = row.weight;
+  const [parts, setParts] = useState<{ qty: string; weight: string }[]>(
+    () => Array.from({ length: Math.max(2, initialN) }, () => ({ qty: "", weight: "" })),
+  );
+  const set = (i: number, k: "qty" | "weight", v: string) =>
+    setParts((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const add = () => setParts((p) => [...p, { qty: "", weight: "" }]);
+  const del = (i: number) => setParts((p) => (p.length > 2 ? p.filter((_, j) => j !== i) : p));
+
+  const qtySum = parts.reduce((a, p) => a + (Number(p.qty) || 0), 0);
+  const wSum = round2(parts.reduce((a, p) => a + (Number(p.weight) || 0), 0));
+  const qtyOK = origQty == null || qtySum === Number(origQty);
+  const wOK = origWeight == null || wSum === round2(Number(origWeight));
+  const canSave = !pending && parts.length >= 2 && qtyOK && wOK;
+  const qtyRemain = origQty == null ? null : Number(origQty) - qtySum;
+  const wRemain = origWeight == null ? null : round2(Number(origWeight) - wSum);
+
+  const save = () =>
+    onConfirm(parts.map((p) => ({
+      qty: p.qty === "" ? null : Number(p.qty),
+      weight: p.weight === "" ? null : Number(p.weight),
+    })));
+  const inp = "w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold">나누기</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        {/* 원본 */}
+        <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-neutral-800">
+          <div className="text-xs text-slate-400">원래 내역</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span className="font-semibold">{row.serial ?? "(번호없음)"}</span>
+            <span>{row.description ?? ""}</span>
+            <span>수량 <b>{fmtInt(origQty)}</b></span>
+            <span>중량 <b>{fmtWeight(origWeight)}</b></span>
+          </div>
+        </div>
+        {/* 분할행 */}
+        <div className="space-y-2" onKeyDown={focusNextInput}>
+          {parts.map((p, i) => (
+            <div key={i} className="flex items-end gap-2">
+              <span className="w-6 pb-2 text-center text-sm text-slate-400">{i + 1}</span>
+              <label className="flex-1">
+                <span className="text-[11px] text-slate-400">수량</span>
+                <NumberInput value={p.qty} kind="int" onChange={(v) => set(i, "qty", v)} className={inp} />
+              </label>
+              <label className="flex-1">
+                <span className="text-[11px] text-slate-400">중량</span>
+                <NumberInput value={p.weight} kind="weight" onChange={(v) => set(i, "weight", v)} className={inp} />
+              </label>
+              <button onClick={() => del(i)} disabled={parts.length <= 2}
+                className="pb-2 text-slate-300 hover:text-rose-500 disabled:opacity-30">✕</button>
+            </div>
+          ))}
+        </div>
+        <button onClick={add} className="mt-2 text-xs text-slate-500 hover:underline">+ 행 추가</button>
+        {/* 합계 검증 */}
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <div className={`rounded-lg p-2 ${qtyOK ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : "bg-rose-50 text-rose-700 dark:bg-rose-950/40"}`}>
+            수량 합 {fmtInt(qtySum)} / {fmtInt(origQty)}{qtyRemain != null && qtyRemain !== 0 ? ` (잔여 ${fmtInt(qtyRemain)})` : ""}
+          </div>
+          <div className={`rounded-lg p-2 ${wOK ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : "bg-rose-50 text-rose-700 dark:bg-rose-950/40"}`}>
+            중량 합 {fmtWeight(wSum)} / {fmtWeight(origWeight)}{wRemain != null && wRemain !== 0 ? ` (잔여 ${fmtWeight(wRemain)})` : ""}
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+          <button onClick={save} disabled={!canSave}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">나누기 저장</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────── 버튼 ─────────
+function Btn({
+  children, onClick, disabled, tone = "default",
+}: {
+  children: React.ReactNode; onClick: () => void; disabled?: boolean;
+  tone?: "default" | "primary" | "indigo" | "rose" | "amber" | "ghost";
+}) {
+  const tones: Record<string, string> = {
+    default: "bg-slate-700 text-white hover:bg-slate-800",
+    primary: "bg-teal-600 text-white hover:bg-teal-700",
+    indigo: "bg-indigo-600 text-white hover:bg-indigo-700",
+    rose: "bg-rose-600 text-white hover:bg-rose-700",
+    amber: "bg-amber-500 text-white hover:bg-amber-600",
+    ghost: "border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
+  };
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}>
+      {children}
+    </button>
+  );
+}
+
+function TargetAction({
+  label, tone, targets, disabled, onRun,
+}: {
+  label: string; tone: "indigo" | "rose" | "amber" | "primary" | "default";
+  targets: Process[]; disabled: boolean; onRun: (targetId: string) => void;
+}) {
+  const [tid, setTid] = useState(targets[0]?.id ?? "");
+  if (targets.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
+      <select value={tid} onChange={(e) => setTid(e.target.value)}
+        className="max-w-[120px] rounded-md bg-white px-2 py-1 text-xs dark:bg-neutral-900">
+        {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      <Btn tone={tone} disabled={disabled || !tid} onClick={() => onRun(tid)}>{label}</Btn>
+    </div>
+  );
+}
 
 export function ProcessView({
-  process,
-  cols,
-  inRows,
-  outRows,
-  targets,
+  process, cols, inRows, outRows, allProcesses,
 }: {
-  process: Process;
-  cols: { in: ColDef[]; out: ColDef[] };
-  inRows: Lot[];
-  outRows: Lot[];
-  targets: Process[];
+  process: Process; cols: { in: ColDef[]; out: ColDef[] };
+  inRows: Lot[]; outRows: Lot[]; allProcesses: Process[];
 }) {
   const isWork = process.schema_type === "work";
   const [selIn, setSelIn] = useState<Set<string>>(new Set());
   const [selOut, setSelOut] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Edits>({});
-  const [targetId, setTargetId] = useState(targets[0]?.id ?? "");
   const [splitN, setSplitN] = useState(2);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [target, setTarget] = useState("");
+  const [combos, setCombos] = useState<Combo[]>([]);
+  const [splitRowId, setSplitRowId] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
 
-  const toggle = (set: "in" | "out", id: string, on: boolean) => {
-    const setter = set === "in" ? setSelIn : setSelOut;
-    setter((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
+  // 토스트 + 확인 토스트
+  const [toast, setToast] = useState<{ kind: "ok" | "err" | "info"; text: string; id: number } | null>(null);
+  const [confirmBox, setConfirmBox] = useState<
+    { text: string; onYes: () => void; yesLabel?: string; altLabel?: string; onAlt?: () => void } | null
+  >(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notify = (kind: "ok" | "err" | "info", text: string) =>
+    setToast({ kind, text, id: Date.now() });
+  useEffect(() => {
+    if (!toast) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setToast(null), 3200);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [toast]);
+
+  const workTargets = useMemo(
+    () => allProcesses.filter((p) => p.schema_type === "work" && p.karat === process.karat),
+    [allProcesses, process.karat]);
+  const otherIoTargets = useMemo(
+    () => allProcesses.filter((p) => p.schema_type === "io" && p.karat === process.karat && p.id !== process.id),
+    [allProcesses, process.id, process.karat]);
+  const ioFieldTargets = useMemo(
+    () => allProcesses.filter((p) => p.schema_type === "io" && !p.is_inspection && p.karat === process.karat),
+    [allProcesses, process.karat]);
+  const ioInspTargets = useMemo(
+    () => allProcesses.filter((p) => p.schema_type === "io" && p.is_inspection && p.karat === process.karat),
+    [allProcesses, process.karat]);
+
+  const lockedSet = useMemo(
+    () => new Set([...inRows, ...outRows].filter((r) => r.locked).map((r) => r.id)),
+    [inRows, outRows]);
+
+  // ── 좌/우 배타 선택: 한쪽을 켜면 반대쪽 비움 ──
+  const toggle = (side: Side) => (id: string, on: boolean) => {
+    const [setThis, clearOther] = side === "in" ? [setSelIn, setSelOut] : [setSelOut, setSelIn];
+    setThis((prev) => {
+      const n = new Set(prev);
+      if (on) { n.add(id); clearOther(new Set()); }
+      else n.delete(id);
+      return n;
     });
   };
+  const toggleAll = (side: Side, rows: Lot[]) => (on: boolean) => {
+    const [setThis, clearOther] = side === "in" ? [setSelIn, setSelOut] : [setSelOut, setSelIn];
+    if (on) { setThis(new Set(rows.map((r) => r.id))); clearOther(new Set()); }
+    else setThis(new Set());
+  };
+  const clearSel = () => { setSelIn(new Set()); setSelOut(new Set()); };
 
-  const run = (
-    fn: () => Promise<{ error?: string } & Record<string, unknown>>,
-    ok: (r: Record<string, unknown>) => string,
-  ) =>
+  const onEdit = (id: string, key: string, raw: string) =>
+    setEdits((p) => ({ ...p, [id]: { ...p[id], [key]: raw === "" ? null : raw } }));
+  const onCommit = (id: string, key: string) => {
+    const v = edits[id]?.[key];
+    const col = [...cols.in, ...cols.out].find((c) => c.key === key);
+    const val = v == null ? null : isNumKind(col?.kind ?? "") ? Number(v) : v;
+    start(async () => { await updateLot(process.id, id, { [key]: val }); });
+  };
+
+  const run = (fn: () => Promise<ActionResult>, ok: (r: ActionResult) => string) =>
     start(async () => {
       const res = await fn();
-      if (res?.error) setMsg("오류: " + res.error);
-      else {
-        setMsg(ok(res));
-        setSelIn(new Set());
-        setSelOut(new Set());
-      }
+      if (res?.error) notify("err", res.error);
+      else { notify("ok", ok(res)); clearSel(); }
     });
+  const askConfirm = (text: string, onYes: () => void) => setConfirmBox({ text, onYes });
 
-  // 편집값이 반영된 lot
-  const eff = (l: Lot): Lot => ({ ...l, ...(edits[l.id] ?? {}) });
-  const editVal = (id: string, key: string, fallback: number | null) => {
-    const e = edits[id];
-    const v = e && key in e ? e[key] : fallback;
-    return v == null ? "" : String(v);
+  const inIds = [...selIn], outIds = [...selOut];
+  const nIn = inIds.length, nOut = outIds.length;
+  const selectedLocked = [...inIds, ...outIds].filter((id) => lockedSet.has(id));
+
+  // 선택 행들의 중량 합 (좌·우 배타라 한쪽만 값)
+  const selWeight = round2(
+    inRows.filter((r) => selIn.has(r.id)).reduce((a, r) => a + (Number(r.weight) || 0), 0) +
+    outRows.filter((r) => selOut.has(r.id)).reduce((a, r) => a + (Number(r.weight) || 0), 0),
+  );
+
+  // 목표 중량 조합 찾기 (작업중/입고 미완료 행 대상)
+  const runFind = () => {
+    const t = Number(target);
+    if (!t) { notify("info", "목표 중량을 입력하세요."); return; }
+    const items = inRows
+      .filter((r) => !r.locked && Number(r.weight) > 0)
+      .map((r) => ({ id: r.id, w: Number(r.weight) }));
+    if (items.length < 2) { notify("info", "조합할 행이 부족합니다."); return; }
+    const res = findCombos(items, t, 7);
+    setCombos(res);
+    if (res.length === 0) notify("info", "조합을 찾지 못했습니다.");
   };
-  const onEdit = (id: string, key: string, raw: string) =>
-    setEdits((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], [key]: raw === "" ? null : Number(raw) },
-    }));
-  const onEditBlur = (id: string, key: string) => {
-    const v = edits[id]?.[key];
+  const pickCombo = (c: Combo) => { setSelIn(new Set(c.ids)); setSelOut(new Set()); };
+  const editRow = editId
+    ? [...inRows, ...outRows].find((r) => r.id === editId) ?? null
+    : null;
+  const splitRow = splitRowId ? inRows.find((r) => r.id === splitRowId) ?? null : null;
+  const saveEdit = (patch: Record<string, number | string | null>) =>
     start(async () => {
-      await updateLot(process.id, id, { [key]: v ?? null });
+      const res = await updateLot(process.id, editId!, patch);
+      if (res?.error) notify("err", res.error);
+      else { notify("ok", "수정 저장됨"); setEditId(null); clearSel(); }
     });
-  };
-
-  const nIn = selIn.size;
-  const nOut = selOut.size;
-
-  const Table = ({
-    title,
-    columns,
-    rows,
-    accent,
-    side,
-  }: {
-    title: string;
-    columns: ColDef[];
-    rows: Lot[];
-    accent: string;
-    side: "in" | "out";
-  }) => {
-    const sel = side === "in" ? selIn : selOut;
-    return (
-      <div className="flex-1 min-w-0">
-        <div className={`text-sm font-semibold mb-1 px-1 ${accent}`}>
-          {title} <span className="text-gray-400">({rows.length})</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="text-xs border-collapse border border-gray-400 dark:border-neutral-600">
-            <colgroup>
-              <col style={{ width: 30 }} />
-              {columns.map((c, i) => (
-                <col key={i} style={{ width: c.width }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr className="bg-gray-100 dark:bg-neutral-800">
-                <th className="border border-gray-400 px-1 dark:border-neutral-600" />
-                {columns.map((c, i) => (
-                  <th
-                    key={i}
-                    className="border border-gray-400 px-2 py-1 font-medium whitespace-nowrap dark:border-neutral-600"
-                  >
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={columns.length + 1}
-                    className="border border-gray-300 px-2 py-4 text-center text-gray-400 dark:border-neutral-700 dark:text-neutral-500"
-                  >
-                    데이터 없음
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r) => {
-                  const checked = sel.has(r.id);
-                  const e = eff(r);
-                  return (
-                    <tr
-                      key={r.id}
-                      className={`${
-                        checked
-                          ? "bg-blue-50 dark:bg-blue-950"
-                          : "hover:bg-amber-50 dark:hover:bg-neutral-800"
-                      } ${r.locked ? "opacity-40" : ""}`}
-                    >
-                      <td className="border border-gray-300 text-center dark:border-neutral-700">
-                        {!r.locked && (
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(ev) => toggle(side, r.id, ev.target.checked)}
-                          />
-                        )}
-                      </td>
-                      {columns.map((c, i) => {
-                        const right =
-                          c.kind === "weight" || c.kind === "int"
-                            ? "text-right tabular-nums"
-                            : "";
-                        if (c.computed)
-                          return (
-                            <td
-                              key={i}
-                              className={`border border-gray-300 px-2 py-1 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 text-gray-600 dark:text-neutral-400 ${right}`}
-                            >
-                              {computedValue(c, e)}
-                            </td>
-                          );
-                        if (c.editable && !r.locked)
-                          return (
-                            <td key={i} className="border border-gray-300 p-0 dark:border-neutral-700">
-                              <NumberInput
-                                value={editVal(r.id, c.key as string, r[c.key] as number | null)}
-                                kind="weight"
-                                onChange={(v) => onEdit(r.id, c.key as string, v)}
-                                className="w-full px-2 py-1 outline-none focus:bg-blue-50 dark:focus:bg-blue-950"
-                              />
-                            </td>
-                          );
-                        return (
-                          <td
-                            key={i}
-                            className={`border border-gray-300 px-2 py-1 whitespace-nowrap dark:border-neutral-700 ${right}`}
-                          >
-                            {fmt(r[c.key], c.kind)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 border border-gray-200 rounded p-2 bg-gray-50 dark:bg-neutral-900 dark:border-neutral-700">
-        <span className="text-xs text-gray-500 dark:text-neutral-400">
-          작업중 {nIn} · 완료 {nOut} 선택
+      <div className="flex items-center gap-3">
+        <Link href="/" className="text-sm text-slate-400 hover:text-slate-600">← 대시보드</Link>
+        <h1 className={`text-2xl font-bold tracking-tight ${process.karat === "14K" ? "text-blue-600 dark:text-blue-400" : ""}`}>
+          {process.name}
+        </h1>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+          {isWork ? "공정" : process.is_inspection ? "검수" : "부서"} · {process.karat ?? "-"}
         </span>
-        <span className="text-gray-300 dark:text-neutral-600">|</span>
+      </div>
 
-        {/* 작업중(입고) 대상 액션 */}
-        <button
-          disabled={pending || nIn === 0}
-          onClick={() =>
-            run(
-              () => completeLots(process.id, [...selIn]),
-              (r) => `완료 처리 (${r.merged}건 → ${r.serial})`,
-            )
-          }
-          className="text-xs rounded px-3 py-1 bg-teal-600 text-white disabled:opacity-40"
-        >
-          {nIn > 1 ? "집계(완료)" : "완료 처리"}
-        </button>
-        <button
-          disabled={pending || nIn === 0 || !targetId}
-          onClick={() =>
-            run(
-              () => transferInbound(process.id, targetId, [...selIn]),
-              (r) => `${r.moved}건 투입`,
-            )
-          }
-          className="text-xs rounded px-3 py-1 bg-indigo-600 text-white disabled:opacity-40"
-        >
-          투입 →
-        </button>
-        <div className="flex items-center gap-1">
-          <button
-            disabled={pending || nIn !== 1}
-            onClick={() =>
-              run(
-                () => splitLot(process.id, [...selIn][0], splitN),
-                (r) => `${r.parts}개로 분할`,
-              )
-            }
-            className="text-xs rounded px-3 py-1 bg-amber-600 text-white disabled:opacity-40"
-          >
-            분할
-          </button>
-          <input
-            type="number"
-            min={2}
-            value={splitN}
-            onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))}
-            className="w-12 border border-gray-300 rounded px-1 py-1 text-xs text-right dark:border-neutral-600"
-          />
+      {/* 액션 툴바 */}
+      <div className="sticky top-[49px] z-10 rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">
+            선택 {isWork ? "작업중" : "입고"} <b className="text-slate-600 dark:text-neutral-200">{nIn}</b> · {isWork ? "완료" : "출고"} <b className="text-slate-600 dark:text-neutral-200">{nOut}</b>
+          </span>
+          {selWeight > 0 && (
+            <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              선택 중량 합 {fmtWeight(selWeight)}
+            </span>
+          )}
+          <span className="text-slate-200 dark:text-neutral-700">|</span>
+
+          {isWork ? (
+            <>
+              <Btn tone="primary" disabled={pending || nIn === 0}
+                onClick={() => run(() => completeLots(process.id, inIds), (r) => `작업완료 (${r.merged}건 → ${r.serial})`)}>
+                작업완료(집계)
+              </Btn>
+            </>
+          ) : (
+            <>
+              <TargetAction label="투입 →" tone="indigo" targets={workTargets} disabled={pending || nIn === 0}
+                onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 투입`)} />
+              <TargetAction label="타부서투입 →" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0}
+                onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서투입`)} />
+            </>
+          )}
+          {/* 나누기 (작업중/입고 단건) */}
+          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
+            <input type="number" min={2} value={splitN}
+              onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))}
+              className="w-12 rounded-md bg-white px-1.5 py-1 text-right text-xs dark:bg-neutral-900" />
+            <Btn tone="amber" disabled={pending || nIn !== 1}
+              onClick={() => setSplitRowId(inIds[0])}>나누기</Btn>
+          </div>
+          {/* 목표중량 조합 찾기 (공정 전용) */}
+          {isWork && (
+            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
+              <input type="number" step="0.01" placeholder="목표중량" value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="w-20 rounded-md bg-white px-2 py-1 text-right text-xs dark:bg-neutral-900" />
+              <Btn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</Btn>
+            </div>
+          )}
+          <Btn tone="ghost" disabled={pending || nIn === 0}
+            onClick={() => askConfirm(`${isWork ? "작업중" : "입고"} ${nIn}건을 삭제할까요?`,
+              () => run(() => deleteLots(process.id, inIds), (r) => `${r.deleted}건 삭제`))}>
+            {isWork ? "작업중 삭제" : "입고 삭제"}
+          </Btn>
+
+          <span className="text-slate-200 dark:text-neutral-700">|</span>
+
+          {isWork ? (
+            <>
+              <TargetAction label="이관 →" tone="rose" targets={workTargets} disabled={pending || nOut === 0}
+                onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 이관`)} />
+              <TargetAction label="현장출고 →" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0}
+                onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
+              <TargetAction label="검수출고 →" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0}
+                onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
+            </>
+          ) : (
+            <>
+              <Btn tone="indigo" disabled={pending || nOut === 0}
+                onClick={() => run(() => tagAdjust(process.id, outIds), (r) => `Tag 보정 ${r.adjusted}건`)}>
+                Tag 보정
+              </Btn>
+              {process.is_inspection && (
+                <Btn tone="default" disabled={pending}
+                  onClick={() => run(() => tagConfirm(process.id), (r) => `Tag 확정 ${r.filled}건`)}>
+                  Tag 확정
+                </Btn>
+              )}
+              <Btn tone="ghost" onClick={() => window.print()}>인쇄</Btn>
+            </>
+          )}
+          <Btn tone="ghost" disabled={pending || nOut === 0}
+            onClick={() => askConfirm(`${isWork ? "완료" : "출고"} ${nOut}건을 삭제할까요?`,
+              () => run(() => deleteLots(process.id, outIds), (r) => `${r.deleted}건 삭제`))}>
+            {isWork ? "완료 삭제" : "출고 삭제"}
+          </Btn>
+
+          {/* 수정 + 잠금행 해제·삭제 (맨 오른쪽) */}
+          <div className="ml-auto flex items-center gap-2">
+            <Btn tone="default" disabled={pending || nIn + nOut !== 1}
+              onClick={() => setEditId(inIds[0] ?? outIds[0])}>✏️ 수정</Btn>
+            <Btn tone="rose" disabled={pending || selectedLocked.length === 0}
+              onClick={() => setConfirmBox({
+                text: `잠긴 ${selectedLocked.length}건을 어떻게 할까요?`,
+                altLabel: "잠금 해제",
+                onAlt: () => run(() => unlockLots(process.id, selectedLocked), (r) => `${r.unlocked}건 잠금 해제`),
+                yesLabel: "삭제",
+                onYes: () => run(() => deleteLots(process.id, selectedLocked), (r) => `잠금행 ${r.deleted}건 삭제`),
+              })}>
+              🔓 잠금 해제·삭제
+            </Btn>
+          </div>
         </div>
 
-        <span className="text-gray-300 dark:text-neutral-600">|</span>
-        {/* 완료(출고) 대상 액션 */}
-        <select
-          value={targetId}
-          onChange={(e) => setTargetId(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
-        >
-          {targets.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <button
-          disabled={pending || nOut === 0 || !targetId}
-          onClick={() =>
-            run(
-              () => transferOutbound(process.id, targetId, [...selOut]),
-              (r) => `${r.moved}건 이관`,
-            )
-          }
-          className="text-xs rounded px-3 py-1 bg-rose-600 text-white disabled:opacity-40"
-        >
-          이관 →
-        </button>
-
-        <span className="text-gray-300 dark:text-neutral-600">|</span>
-        <button
-          disabled={pending || nIn + nOut === 0}
-          onClick={() => {
-            if (confirm(`${nIn + nOut}건을 삭제할까요?`))
-              run(
-                () => deleteLots(process.id, [...selIn, ...selOut]),
-                (r) => `${r.deleted}건 삭제`,
-              );
-          }}
-          className="text-xs rounded px-3 py-1 border border-rose-400 text-rose-600 disabled:opacity-40 dark:border-rose-800"
-        >
-          삭제
-        </button>
-
-        {msg && <span className="text-xs text-gray-600 dark:text-neutral-300">{msg}</span>}
+        {/* 조합 찾기 결과 (공정 전용) */}
+        {isWork && combos.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 dark:border-neutral-800">
+            <span className="text-xs text-slate-400">목표 {fmtWeight(target)} 근사 조합</span>
+            {combos.map((c, i) => (
+              <button key={i} onClick={() => pickCombo(c)}
+                className="rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs text-teal-800 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-200">
+                <b>{CIRCLED[i]}</b> {fmtWeight(c.sum)}
+                <span className="text-slate-400"> ({c.ids.length}건{c.diff > 0 ? `, 오차 ${fmtWeight(c.diff)}` : ", 정확"})</span>
+              </button>
+            ))}
+            <button onClick={() => setCombos([])}
+              className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-500 dark:border-neutral-700">지우기</button>
+          </div>
+        )}
       </div>
 
-      <div className="flex gap-4">
-        <Table
-          title={isWork ? "작업중 (입고)" : "입고"}
-          columns={cols.in}
-          rows={inRows}
-          accent="text-emerald-700 dark:text-emerald-400"
-          side="in"
-        />
-        <Table
-          title={isWork ? "완료 (출고)" : "출고"}
-          columns={cols.out}
-          rows={outRows}
-          accent="text-rose-700 dark:text-rose-400"
-          side="out"
-        />
+      {/* 수정 패널 */}
+      {editRow && (
+        <EditPanel key={editRow.id} row={editRow}
+          columns={editRow.side === "in" ? cols.in : cols.out}
+          pending={pending} onSave={saveEdit} onClose={() => setEditId(null)} />
+      )}
+
+      {/* 나누기 모달 */}
+      {splitRow && (
+        <SplitModal key={splitRow.id} row={splitRow} initialN={splitN} pending={pending}
+          onClose={() => setSplitRowId(null)}
+          onConfirm={(parts) => start(async () => {
+            const res = await splitLotCustom(process.id, splitRow.id, parts);
+            if (res?.error) notify("err", res.error);
+            else { notify("ok", `${res.parts}개로 나눔`); setSplitRowId(null); clearSel(); }
+          })} />
+      )}
+
+      {/* 두 블록 (적응형: 좁으면 세로, 27"급은 가로) */}
+      <div className="flex flex-col gap-3 2xl:flex-row">
+        <LotTable title={isWork ? "작업중" : "입고"} accent="bg-emerald-500"
+          columns={cols.in} rows={inRows} selected={selIn}
+          onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)}
+          edits={edits} onEdit={onEdit} onCommit={onCommit} />
+        <LotTable title={isWork ? "완료" : "출고"} accent="bg-rose-500"
+          columns={cols.out} rows={outRows} selected={selOut}
+          onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)}
+          edits={edits} onEdit={onEdit} onCommit={onCommit} />
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-neutral-500">
-        ※ 일련번호는 이동해도 그대로 유지(병합·분할 시에만 형태 변경). 처리된 행은 잠금(흐림)되어 재작업 불가.
-        완료측 <b>작업후/실중량·Tag</b> 칸은 직접 입력 → 로스·로스율·출고중량 자동 계산.
+      <p className="text-[11px] text-slate-400 print:hidden">
+        ※ 좌·우는 동시 선택 불가(흐름 로직이 다름). 일련번호는 이동해도 유지(집계·분할 시에만 형태 변경).
+        처리행은 🔒 잠금 — 맨 오른쪽 버튼으로 해제·삭제. 완료/출고측 작업후·실중량·Tag는 직접 입력 → 자동 계산.
       </p>
+
+      {/* 토스트 (화면 정중앙, 크게) */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className={`rounded-2xl px-8 py-5 text-lg font-medium shadow-2xl ${
+            toast.kind === "err" ? "bg-rose-600 text-white"
+              : toast.kind === "ok" ? "bg-emerald-600 text-white"
+                : "bg-slate-800 text-white"}`}>
+            {toast.text}
+          </div>
+        </div>
+      )}
+      {/* 확인 (화면 정중앙) */}
+      {confirmBox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+          onClick={() => setConfirmBox(null)}>
+          <div className="rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-neutral-800 dark:ring-neutral-700"
+            onClick={(e) => e.stopPropagation()}>
+            <p className="mb-4 text-base">{confirmBox.text}</p>
+            <div className="flex items-center gap-2">
+              {confirmBox.onAlt && (
+                <button onClick={() => { const f = confirmBox.onAlt!; setConfirmBox(null); f(); }}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">
+                  {confirmBox.altLabel ?? "잠금 해제"}
+                </button>
+              )}
+              <button onClick={() => setConfirmBox(null)}
+                className="ml-auto rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+              <button onClick={() => { const f = confirmBox.onYes; setConfirmBox(null); f(); }}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white">{confirmBox.yesLabel ?? "확인"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

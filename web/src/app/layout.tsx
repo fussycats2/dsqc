@@ -44,7 +44,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-white text-gray-900 dark:bg-neutral-950 dark:text-neutral-100">
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-900">
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
           <span className="font-bold text-sm">dsqc · 제조공정 관리</span>
           <div className="flex items-center gap-4">
             <DateToggle />

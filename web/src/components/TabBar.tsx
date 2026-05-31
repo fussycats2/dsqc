@@ -26,8 +26,8 @@ const tabBase =
   "shrink-0 px-3 py-1.5 text-xs border-r border-gray-300 dark:border-neutral-700 whitespace-nowrap transition-colors";
 const tabIdle =
   "bg-gray-100 hover:bg-gray-50 dark:bg-neutral-800 dark:hover:bg-neutral-700";
-const tabActive =
-  "bg-white dark:bg-neutral-950 font-semibold border-t-2 border-t-blue-500 -mt-px";
+// 선택된 공정 탭: 파란 배경 + 흰 글씨로 확실히 강조
+const tabActive = "bg-blue-600 text-white font-bold";
 
 function Seg({
   items,
@@ -47,7 +47,11 @@ function Seg({
           className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
             value === it.key
               ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              : `bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 ${
+                  it.key.includes("14K")
+                    ? "text-blue-600 dark:text-blue-400"
+                    : "text-gray-600 dark:text-neutral-300"
+                }`
           }`}
         >
           {it.label}
@@ -90,52 +94,33 @@ export function TabBar({ processes }: { processes: Process[] }) {
     });
   }, [processes, karat, group, sub]);
 
-  const fixedTab = (href: string, label: string, active: boolean) => (
-    <Link href={href} className={`${tabBase} ${active ? tabActive : tabIdle}`}>
-      {label}
-    </Link>
-  );
+  const pill = (active: boolean) =>
+    `rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+      active
+        ? "bg-blue-600 text-white"
+        : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+    }`;
 
   return (
-    <nav className="sticky bottom-0 z-20 border-t border-gray-300 bg-gray-200 dark:border-neutral-700 dark:bg-neutral-900">
-      <div className="flex border-b border-gray-300 dark:border-neutral-700">
-        {fixedTab("/", "🏠 대시보드", pathname === "/")}
-        {entry &&
-          fixedTab(
-            `/process/${entry.id}`,
-            "✏️ 작성",
-            pathname === `/process/${entry.id}`,
-          )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 border-b border-gray-300 dark:border-neutral-700">
-        <Seg
-          items={[
-            { key: "18K", label: "18K" },
-            { key: "14K", label: "14K" },
-          ]}
-          value={karat}
-          onChange={(k) => setKarat(k as Karat)}
-        />
+    <nav className="sticky bottom-0 z-20 border-t border-gray-300 bg-gray-200 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-300 px-2 py-1 dark:border-neutral-700">
+        <Link href="/" className={pill(pathname === "/")}>🏠 대시보드</Link>
+        {entry && (
+          <Link href={`/process/${entry.id}`} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</Link>
+        )}
         <span className="text-gray-300 dark:text-neutral-600">|</span>
-        <Seg
-          items={GROUPS.map((g) => ({ key: g, label: g }))}
-          value={group}
-          onChange={(g) => setGroup(g as Group)}
-        />
+        <Seg items={[{ key: "18K", label: "18K" }, { key: "14K", label: "14K" }]} value={karat} onChange={(k) => setKarat(k as Karat)} />
+        <span className="text-gray-300 dark:text-neutral-600">|</span>
+        <Seg items={GROUPS.map((g) => ({ key: g, label: g }))} value={group} onChange={(g) => setGroup(g as Group)} />
         {group === "공정" && (
           <>
             <span className="text-gray-300 dark:text-neutral-600">|</span>
-            <Seg
-              items={SUBS.map((s) => ({ key: s, label: s }))}
-              value={sub}
-              onChange={(s) => setSub(s as Sub)}
-            />
+            <Seg items={SUBS.map((s) => ({ key: s, label: s }))} value={sub} onChange={(s) => setSub(s as Sub)} />
           </>
         )}
       </div>
 
-      <div className="flex overflow-x-auto min-h-[34px]">
+      <div className="flex overflow-x-auto min-h-[32px]">
         {tabs.length === 0 ? (
           <span className="px-3 py-1.5 text-xs text-gray-400 dark:text-neutral-500">
             해당 분류에 공정이 없습니다.
@@ -147,10 +132,14 @@ export function TabBar({ processes }: { processes: Process[] }) {
               <Link
                 key={p.id}
                 href={`/process/${p.id}`}
-                className={`${tabBase} ${active ? tabActive : tabIdle} ${
-                  p.is_blue
-                    ? "text-blue-600 dark:text-blue-400"
-                    : "text-gray-700 dark:text-neutral-200"
+                className={`${tabBase} ${
+                  active
+                    ? tabActive
+                    : `${tabIdle} ${
+                        p.karat === "14K"
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-gray-700 dark:text-neutral-200"
+                      }`
                 }`}
               >
                 {p.name}

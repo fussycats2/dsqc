@@ -39,3 +39,9 @@ body {
     background-color: transparent;
   }
 }
+
+/* 인쇄: 흰 배경/검은 글자로 강제, 표 전체 출력 */
+@media print {
+  html, body { background: #fff !important; color: #000 !important; }
+  table { font-size: 10px !important; }
+}

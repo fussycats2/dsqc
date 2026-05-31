@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { envMissing } from "@/lib/getProcesses";
-import { fmtWeight, type Process } from "@/lib/types";
+import { fmtWeight, fmtInt, round2, type Process } from "@/lib/types";
 
 interface Balance {
   process_id: string;
@@ -29,7 +29,7 @@ function BalanceTable({
   const tOut = rows.reduce((a, r) => a + num(r.out_weight), 0);
   return (
     <section className="flex-1 min-w-[320px]">
-      <h2 className="text-sm font-semibold mb-2">{title}</h2>
+      <h2 className={`text-sm font-semibold mb-2 ${title.includes("14K") ? "text-blue-600 dark:text-blue-400" : ""}`}>{title}</h2>
       <table className="text-xs border-collapse border border-gray-400 dark:border-neutral-600 w-full">
         <thead>
           <tr className="bg-gray-100 dark:bg-neutral-800">
@@ -43,16 +43,16 @@ function BalanceTable({
         </thead>
         <tbody>
           {rows.map((r) => {
-            const stock = num(r.in_weight) - num(r.out_weight);
-            const blue = procs.get(r.process_id)?.is_blue;
+            const stock = round2(num(r.in_weight) - num(r.out_weight));
+            const blue = procs.get(r.process_id)?.karat === "14K";
             return (
               <tr key={r.process_id} className="hover:bg-amber-50 dark:hover:bg-neutral-800">
                 <td className={`border border-gray-300 px-2 py-1 dark:border-neutral-700 ${blue ? "text-blue-600 dark:text-blue-400" : ""}`}>
                   {r.name}
                 </td>
-                <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{num(r.in_qty) || ""}</td>
+                <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{fmtInt(r.in_qty)}</td>
                 <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{fmtWeight(r.in_weight) || ""}</td>
-                <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{num(r.out_qty) || ""}</td>
+                <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{fmtInt(r.out_qty)}</td>
                 <td className="border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700">{fmtWeight(r.out_weight) || ""}</td>
                 <td className={`border border-gray-300 px-2 py-1 text-right tabular-nums dark:border-neutral-700 ${stock < 0 ? "text-rose-600 font-semibold" : ""}`}>
                   {fmtWeight(stock)}
