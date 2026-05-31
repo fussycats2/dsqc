@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* 클래스 기반 다크모드: <html class="dark"> 일 때 dark: 변형 적용 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 입력 요소가 테마 색을 따르도록(다크에서 글자 안 보임 방지).
+   @layer base 안에 둬야 Tailwind 유틸리티(bg-blue-600 등)가 이를 덮어쓸 수 있음 */
+@layer base {
+  input,
+  select,
+  textarea,
+  button {
+    color: inherit;
+    background-color: transparent;
+  }
+}

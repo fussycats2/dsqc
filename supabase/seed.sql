@@ -1,0 +1,47 @@
+-- 자동 생성: tools/gen_seed.py (업로드.xlsm 시트 기반)
+-- 공정 마스터 시드
+insert into processes (name, code, karat, schema_type, is_inspection, is_blue, category, sort_order) values
+  ('빠우(양장볼)', null, '18K', 'work', false, false, array['빠우']::text[], 1),
+  ('작성', null, null, 'entry', false, false, '{}'::text[], 2),
+  ('기계', 'M', '18K', 'io', false, false, '{}'::text[], 3),
+  ('양장', 'Y', '18K', 'io', false, false, '{}'::text[], 4),
+  ('캐스팅', 'C', '18K', 'io', false, false, '{}'::text[], 5),
+  ('개발', 'G', '18K', 'io', false, false, '{}'::text[], 6),
+  ('컷팅', 'T', '18K', 'io', false, false, '{}'::text[], 7),
+  ('조립14K', 'A', '14K', 'io', false, true, array['14K']::text[], 8),
+  ('캐스팅14K', 'C', '14K', 'io', false, true, array['14K']::text[], 9),
+  ('컷팅14K', 'T', '14K', 'io', false, true, array['14K']::text[], 10),
+  ('연마(조립)', null, '18K', 'work', false, false, array['연마']::text[], 11),
+  ('연마(캐스팅)', null, '18K', 'work', false, false, array['연마']::text[], 12),
+  ('연마(조립)14K', null, '14K', 'work', false, false, array['연마','14K']::text[], 13),
+  ('연마(캐스팅)14K', null, '14K', 'work', false, false, array['연마','14K']::text[], 14),
+  ('뻥(기계)', null, '18K', 'work', false, false, array['뻥']::text[], 15),
+  ('뻥(양장)', null, '18K', 'work', false, false, array['뻥']::text[], 16),
+  ('뻥(캐스팅)', null, '18K', 'work', false, false, array['뻥']::text[], 17),
+  ('뻥(개발)', null, '18K', 'work', false, false, array['뻥']::text[], 18),
+  ('뻥(조립)14K', null, '14K', 'work', false, false, array['뻥','14K']::text[], 19),
+  ('뻥(캐스팅)14K', null, '14K', 'work', false, false, array['뻥','14K']::text[], 20),
+  ('빠우(기계)', null, '18K', 'work', false, false, array['빠우']::text[], 21),
+  ('빠우(할로우)', null, '18K', 'work', false, false, array['빠우']::text[], 22),
+  ('빠우(패션반지)', null, '18K', 'work', false, false, array['빠우']::text[], 23),
+  ('빠우(캐스팅양장)', null, '18K', 'work', false, false, array['빠우']::text[], 24),
+  ('빠우(캐스팅체인)', null, '18K', 'work', false, false, array['빠우']::text[], 25),
+  ('빠우(초광-조립)', null, '18K', 'work', false, false, array['빠우']::text[], 26),
+  ('빠우(초광-캐스팅)', null, '18K', 'work', false, false, array['빠우']::text[], 27),
+  ('빠우(개발)', null, '18K', 'work', false, false, array['빠우']::text[], 28),
+  ('빠우(조립)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 29),
+  ('빠우(초광-조립)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 30),
+  ('빠우(패션반지)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 31),
+  ('빠우(캐스팅양장)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 32),
+  ('빠우(캐스팅체인)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 33),
+  ('빠우(초광-캐스팅)14K', null, '14K', 'work', false, false, array['빠우','14K']::text[], 34),
+  ('검수(기계)', 'QM', '18K', 'io', true, false, array['검수']::text[], 35),
+  ('검수(볼)', 'QB', '18K', 'io', true, false, array['검수']::text[], 36),
+  ('검수(양장)', 'QY', '18K', 'io', true, false, array['검수']::text[], 37),
+  ('검수(캐스팅)', 'QC', '18K', 'io', true, false, array['검수']::text[], 38),
+  ('검수(조립)14K', 'QA', '14K', 'io', true, true, array['검수','14K']::text[], 39),
+  ('검수(캐스팅)14K', 'QC', '14K', 'io', true, true, array['검수','14K']::text[], 40)
+on conflict (name) do nothing;
+
+-- 최초 기간(현재 월) 생성
+insert into periods (label, kind, status) values (to_char(now() at time zone 'Asia/Seoul','YYYY-MM'), 'month', 'open');
