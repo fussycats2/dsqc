@@ -264,11 +264,11 @@ export default async function Home() {
             value={`${pendingTotal}건`} />
         </div>
         {pendingTotal > 0 && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
               ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="ml-auto flex flex-wrap justify-end gap-1.5">
               {pending.map(({ p, cnt }) => (
                 <Link key={p.id} href={`/process/${p.id}`}
                   className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800">
