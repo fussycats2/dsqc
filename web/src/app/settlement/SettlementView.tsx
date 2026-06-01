@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { NumberInput } from "@/components/NumberInput";
 import { fmtWeight } from "@/lib/types";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
 import { saveSettlement, carrySettlement, moveSettlement } from "./settlementActions";
@@ -19,13 +18,24 @@ const range = (start: string, n: number) =>
 const carriedSet = new Set(CARRY.map(([to]) => to));
 const preserveSet = new Set(PRESERVE);
 
+// 천단위 콤마 표시(소수점·자릿수는 입력 그대로 유지). 저장값은 콤마 없는 원문.
+const commaFmt = (raw: string) => {
+  if (raw === "" || raw === "-") return raw;
+  const neg = raw.startsWith("-");
+  const s = neg ? raw.slice(1) : raw;
+  const dot = s.indexOf(".");
+  const int = dot >= 0 ? s.slice(0, dot) : s;
+  const dec = dot >= 0 ? s.slice(dot) : "";
+  return (neg ? "-" : "") + int.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + dec;
+};
+
 // 셀 스펙: h=헤더 rh=행머리 t=텍스트 in=입력 calc=계산 e=빈칸(b=테두리)
 type C =
-  | { k: "h"; t: string; span?: number }
-  | { k: "rh"; t: string; span?: number }
+  | { k: "h"; t: string; span?: number; cls?: string }
+  | { k: "rh"; t: string; span?: number; cls?: string }
   | { k: "t"; t: string; span?: number; cls?: string }
   | { k: "in"; a: string }
-  | { k: "calc"; a: string; span?: number }
+  | { k: "calc"; a: string; span?: number; cls?: string }
   | { k: "e"; span?: number; b?: boolean };
 
 const dateInputCls =
@@ -34,7 +44,7 @@ const dateInputCls =
 export function SettlementView({ workDate, initial }: { workDate: string; initial: CellMap }) {
   const toStr = (d: CellMap): Record<string, string> => {
     const o: Record<string, string> = {};
-    for (const [k, v] of Object.entries(d)) o[k] = v == null ? "" : String(v);
+    for (const [k, v] of Object.entries(d)) o[k] = v == null ? "" : typeof v === "number" ? v.toFixed(2) : String(v);
     return o;
   };
   const [vals, setVals] = useState<Record<string, string>>(() => toStr(initial));
@@ -77,19 +87,26 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         ? "bg-sky-50 dark:bg-sky-900/15 print:bg-transparent"
         : "";
     return (
-      <NumberInput value={vals[a] ?? ""} kind="weight" align="right"
-        onChange={(v) => set(a, v)}
-        className={`w-full bg-transparent px-1 py-[3px] text-[10px] outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 ${tint}`} />
+      <input value={commaFmt(vals[a] ?? "")} inputMode="decimal"
+        onChange={(e) => {
+          const r = e.target.value.replace(/,/g, "");
+          if (r === "" || r === "-" || /^-?\d*\.?\d{0,2}$/.test(r)) set(a, r);
+        }}
+        onBlur={(e) => {
+          const r = e.target.value.replace(/,/g, "");
+          if (r !== "" && r !== "-" && !isNaN(Number(r))) set(a, Number(r).toFixed(2));
+        }}
+        className={`w-full bg-transparent px-1 py-[3px] text-right text-[10px] tabular-nums outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 ${tint}`} />
     );
   };
 
   const renderCell = (c: C, key: number) => {
     if (c.k === "e") return <td key={key} colSpan={c.span} className={c.b ? bd : "border-0 print:border-0"} />;
-    if (c.k === "h") return <td key={key} colSpan={c.span} className={thCls}>{c.t}</td>;
-    if (c.k === "rh") return <td key={key} colSpan={c.span} className={rhCls}>{c.t}</td>;
+    if (c.k === "h") return <td key={key} colSpan={c.span} className={`${thCls} ${c.cls ?? ""}`}>{c.t}</td>;
+    if (c.k === "rh") return <td key={key} colSpan={c.span} className={`${rhCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "t") return <td key={key} colSpan={c.span} className={`${tCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "in") return <td key={key} className={`${bd} p-0`}>{inEl(c.a)}</td>;
-    return <td key={key} colSpan={c.span} className={calcCls}>{fmtCalc(f[c.a])}</td>;
+    return <td key={key} colSpan={c.span} className={`${calcCls} ${c.cls ?? ""}`}>{fmtCalc(f[c.a])}</td>;
   };
 
   // 공유 13열 그리드 — 모든 서브표가 같은 열에 정렬(엑셀과 동일)
@@ -126,8 +143,8 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     [{ k: "h", t: "K18" }, ...["분석업체", "기계", "양장", "캐스팅", "조립초광", "캐.초광", "땜", "조립2차", "캐스팅2차", "고정값1", "고정값2"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 1, b: true }],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B21" }, ...range("C", 10).map((c) => ({ k: "in", a: `${c}21` } as C)), { k: "e", span: 1, b: true }],
     gap,
-    [{ k: "h", t: "실재고", span: 2 }, { k: "h", t: "장부재고", span: 2 }, { k: "h", t: "차중량", span: 2 }, { k: "e", span: 7 }],
-    [{ k: "calc", a: "A24", span: 2 }, { k: "calc", a: "B24", span: 2 }, { k: "calc", a: "C24", span: 2 }, { k: "e", span: 7 }],
+    [{ k: "h", t: "실재고" }, { k: "h", t: "장부재고" }, { k: "h", t: "차중량" }, { k: "e", span: 10 }],
+    [{ k: "calc", a: "A24", cls: "py-2.5" }, { k: "calc", a: "B24", cls: "py-2.5" }, { k: "calc", a: "C24", cls: "py-2.5" }, { k: "e", span: 10 }],
   ];
 
   // ───────── K14 ─────────
@@ -180,10 +197,10 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     <table className="border-collapse text-[10px]">
       <tbody>
         <tr>
-          <td rowSpan={2} className={`${bd} w-7 px-1 text-center font-semibold`}>결<br />재</td>
-          {cols.map((c) => <td key={c} className={`${bd} w-20 px-1 py-1 text-center`}>{c}</td>)}
+          <td rowSpan={2} className={`${bd} w-6 px-1 text-center font-semibold`}>결<br />재</td>
+          {cols.map((c) => <td key={c} className={`${bd} w-16 px-1 py-[3px] text-center`}>{c}</td>)}
         </tr>
-        <tr>{cols.map((c) => <td key={c} className={`${bd} h-16`} />)}</tr>
+        <tr>{cols.map((c) => <td key={c} className={`${bd} h-11`} />)}</tr>
       </tbody>
     </table>
   );
