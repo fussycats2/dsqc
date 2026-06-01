@@ -21,7 +21,7 @@ function fmtCell(v: unknown, kind: string): string {
     const s = String(v);
     return `${s.slice(8, 10)} ${s.slice(11, 16)}`;
   }
-  if (kind === "weight") return fmtWeight(v);
+  if (kind === "weight") return typeof v === "string" && v.includes(",") ? v : fmtWeight(v); // 원중량 집계 콤마결합은 그대로
   if (kind === "int") return fmtInt(v);
   return String(v);
 }
