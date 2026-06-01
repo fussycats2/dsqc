@@ -3,23 +3,13 @@
 //  · 행 구조: 11=합계, 12=헤더, 13~=데이터. io 입고 A:K / 출고 L:Y, work 작업중 A(현황)+B:L / 완료 M:Z.
 //  · 잠금(locked) 마커(엑셀엔 플래그 없음, VBA 검증): io입고=J투입시간 / work작업중=A현황'완료' / work완료=Y이관·출고시간.
 //  · 서버 전용(node fs + jszip).
+// 서버(export)·브라우저(import 파싱) 양쪽에서 쓰므로 node:fs를 직접 import하지 않는다(isomorphic).
+//  · 백업: 서버 라우트가 템플릿 버퍼를 읽어 fillUploadXlsm(tpl, …)에 넘김.
+//  · 복원: 브라우저에서 parseUploadXlsm으로 파싱(5MB 업로드 한도 회피) → 작은 JSON만 서버 전송.
 import JSZip from "jszip";
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
 import { COLUMNS, type ColDef, type Lot, type SchemaType } from "./types";
 
 const NFC = (s: string) => s.normalize("NFC");
-
-// 한글 파일명 정규화(NFC/NFD) 불일치로 readFile 실패하는 것 방지 — readdir로 실제 바이트 경로 확보.
-async function templatePath(): Promise<string> {
-  const dir = path.join(process.cwd(), "templates");
-  const files = await readdir(dir);
-  const hit = files.find(
-    (f) => f.toLowerCase().endsWith(".xlsm") && NFC(f).includes(NFC("업로드")),
-  );
-  if (!hit) throw new Error("templates/업로드.xlsm 템플릿을 찾을 수 없습니다.");
-  return path.join(dir, hit);
-}
 
 // 1=A, 2=B, ... 27=AA
 function colLetter(n: number): string {
@@ -79,16 +69,27 @@ function setCell(xml: string, ref: string, value: number | string): string {
   });
 }
 
-// lot의 한 칸 값 → 숫자/문자 (원중량은 콤마결합 가능 → 항상 문자)
+// ISO 타임스탬프 → 엑셀 표기 'YYYY-MM-DD HH:MM:SS' (KST). 파싱 안 되면 원문.
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const k = new Date(d.getTime() + 9 * 3600 * 1000); // UTC→KST
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${k.getUTCFullYear()}-${p(k.getUTCMonth() + 1)}-${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}:${p(k.getUTCSeconds())}`;
+}
+
+// lot의 한 칸 값 → 숫자/문자.
+//  · datetime(투입/이관시간)은 KST 문자열로 포맷(텍스트).
+//  · 그 외엔 Excel 입력처럼 자동 판별: **순수 숫자 형태면 숫자**(합계 SUM에 잡히고 '텍스트로 저장된 숫자'
+//    경고 없음), 그 외(일련번호·내역·납기·콤마결합 원중량 등)는 텍스트.
 function cellFor(lot: Lot, col: ColDef): number | string | null {
   const raw = lot[col.key];
   if (raw == null || raw === "") return null;
-  if (col.key === "raw_weight") return String(raw);
-  if (col.kind === "int" || col.kind === "weight") {
-    const n = Number(raw);
-    return Number.isFinite(n) && String(raw).trim() !== "" ? n : String(raw);
-  }
-  return String(raw);
+  if (col.kind === "datetime") return fmtDateTime(String(raw));
+  const s = String(raw).trim();
+  if (s === "") return null;
+  if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s); // 순수 정수/소수만 숫자로
+  return s;
 }
 
 function fillSheet(xml: string, schema: IoOrWork, lotsIn: Lot[], lotsOut: Lot[]): string {
@@ -113,7 +114,7 @@ function fillSheet(xml: string, schema: IoOrWork, lotsIn: Lot[], lotsOut: Lot[])
 }
 
 // 다운로드 .xlsm 후처리(결산서와 동일): 열 때 전체 재계산 + calcChain 제거(복구 경고 방지).
-async function finalize(zip: JSZip): Promise<Buffer> {
+async function finalize(zip: JSZip): Promise<Uint8Array> {
   let wbx = await zip.file("xl/workbook.xml")!.async("string");
   if (!/fullCalcOnLoad/.test(wbx)) {
     wbx = /<calcPr\b/.test(wbx)
@@ -128,14 +129,17 @@ async function finalize(zip: JSZip): Promise<Buffer> {
     const rels = await zip.file("xl/_rels/workbook.xml.rels")!.async("string");
     zip.file("xl/_rels/workbook.xml.rels", rels.replace(/<Relationship [^>]*Target="calcChain\.xml"[^>]*\/>/, ""));
   }
-  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 
 type ProcMeta = { id: string; name: string; schema_type: SchemaType };
 
-// 공정·lots → 채워진 .xlsm 버퍼
-export async function fillUploadXlsm(procs: ProcMeta[], lots: Lot[]): Promise<Buffer> {
-  const tpl = await readFile(await templatePath());
+// 템플릿(버퍼)·공정·lots → 채워진 .xlsm 바이트
+export async function fillUploadXlsm(
+  tpl: ArrayBuffer | Uint8Array,
+  procs: ProcMeta[],
+  lots: Lot[],
+): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(tpl);
   const sheets = await sheetMap(zip);
   const byId = new Map(procs.map((p) => [p.id, p]));
@@ -258,8 +262,11 @@ function readBlock(
   return rec as ParsedLot;
 }
 
-// 업로드된 .xlsm → ParsedLot[] (공정명·side·잠금 + 필드)
-export async function parseUploadXlsm(buf: Buffer, procs: ProcMeta[]): Promise<ParsedLot[]> {
+// 업로드된 .xlsm → ParsedLot[] (공정명·side·잠금 + 필드). 브라우저에서도 호출 가능.
+export async function parseUploadXlsm(
+  buf: ArrayBuffer | Uint8Array,
+  procs: { name: string; schema_type: SchemaType }[],
+): Promise<ParsedLot[]> {
   const zip = await JSZip.loadAsync(buf);
   const sheets = await sheetMap(zip);
   const shared = await sharedStrings(zip);

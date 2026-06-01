@@ -491,7 +491,10 @@ export default async function Home() {
         />
       </Section>
 
-      <Backup workDate={workDate} />
+      <Backup
+        workDate={workDate}
+        procs={procList.map((p) => ({ name: p.name, schema_type: p.schema_type }))}
+      />
 
       <p className="text-[11px] text-slate-400 dark:text-neutral-500">
         ※ 공정 오차 = 입고 − 재고 − 출고 − 로스 (정상이면 0,{" "}

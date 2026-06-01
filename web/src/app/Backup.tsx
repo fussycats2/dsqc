@@ -2,11 +2,19 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { SchemaType } from "@/lib/types";
 
 const fmtD = (s: string) => s.replaceAll("-", "/");
 
 // 작업 데이터(전 공정) 엑셀 백업/복원 — 매크로(VBA)·수식 보존, 가져오기는 충돌 시 취소(덮어쓰기 금지).
-export function Backup({ workDate }: { workDate: string }) {
+//  · 파싱은 브라우저에서 수행(5MB 업로드 한도 회피) → 작은 JSON만 서버로 전송.
+export function Backup({
+  workDate,
+  procs,
+}: {
+  workDate: string;
+  procs: { name: string; schema_type: SchemaType }[];
+}) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
@@ -14,10 +22,23 @@ export function Backup({ workDate }: { workDate: string }) {
 
   const onImport = (file: File) =>
     start(async () => {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("date", workDate);
-      const res = await fetch("/api/upload/import", { method: "POST", body: fd });
+      let lots;
+      try {
+        const { parseUploadXlsm } = await import("@/lib/uploadXlsx");
+        lots = await parseUploadXlsm(await file.arrayBuffer(), procs);
+      } catch (e) {
+        setBox({ title: "가져오기 실패", lines: ["엑셀 해석 실패: " + (e as Error).message] });
+        return;
+      }
+      if (lots.length === 0) {
+        setBox({ title: "가져오기 취소", lines: ["파일에서 작업 데이터를 찾지 못했습니다."] });
+        return;
+      }
+      const res = await fetch("/api/upload/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: workDate, lots }),
+      });
       const r = await res.json().catch(() => ({ error: "서버 응답을 읽지 못했습니다." }));
       if (r.error) {
         setBox({ title: "가져오기 취소", lines: String(r.error).split("\n") });

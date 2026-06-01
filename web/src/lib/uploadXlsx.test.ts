@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import JSZip from "jszip";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { fillUploadXlsm, parseUploadXlsm } from "./uploadXlsx";
 import type { Lot, SchemaType } from "./types";
 
@@ -7,6 +9,15 @@ const procs: { id: string; name: string; schema_type: SchemaType }[] = [
   { id: "p-io", name: "기계", schema_type: "io" },
   { id: "p-wk", name: "연마(조립)", schema_type: "work" },
 ];
+
+async function template(): Promise<Buffer> {
+  const dir = path.join(process.cwd(), "templates");
+  const files = await readdir(dir);
+  const hit = files.find(
+    (f) => f.toLowerCase().endsWith(".xlsm") && f.normalize("NFC").includes("업로드".normalize("NFC")),
+  )!;
+  return readFile(path.join(dir, hit));
+}
 
 const lot = (o: Partial<Lot>): Lot => ({
   id: o.id ?? Math.random().toString(36).slice(2),
@@ -32,7 +43,7 @@ describe("uploadXlsx 백업/복원 왕복", () => {
       lot({ id: "7", process_id: "p-wk", side: "out", serial: "A_260601_004", weight_before: 5, weight: 4.8 }), // 미이관 → unlocked
     ];
 
-    const buf = await fillUploadXlsm(procs, lots);
+    const buf = await fillUploadXlsm(await template(), procs, lots);
 
     // 매크로(VBA) 보존
     const zip = await JSZip.loadAsync(buf);

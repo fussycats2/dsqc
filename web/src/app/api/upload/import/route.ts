@@ -1,35 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { parseUploadXlsm } from "@/lib/uploadXlsx";
-import type { SchemaType } from "@/lib/types";
+import type { ParsedLot } from "@/lib/uploadXlsx";
 
 export const runtime = "nodejs";
 
-// POST /api/upload/import  (multipart: file, date)
-//  · 그 작업일에 이미 lots가 있으면 덮어쓰지 않고 취소(409). 없으면 시트별로 lots 생성.
-//  · 계보(lot_links)는 만들지 않음(엑셀엔 없는 개념 — 평면 복원). 일련번호 유지.
+// POST /api/upload/import  (JSON: { date, lots: ParsedLot[] })
+//  · 파싱은 브라우저에서 수행(5MB 업로드 한도 회피) → 여기는 작은 JSON만 받아 삽입.
+//  · 그 작업일에 이미 lots가 있으면 덮어쓰지 않고 취소(409). 일련번호 유지, 계보(lot_links) 생성 안 함.
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
-  const file = form.get("file");
-  const date = String(form.get("date") ?? "");
-  if (!(file instanceof File)) return NextResponse.json({ error: "파일이 없습니다." }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const date = String(body?.date ?? "");
+  const parsed = Array.isArray(body?.lots) ? (body.lots as ParsedLot[]) : null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "날짜가 올바르지 않습니다." }, { status: 400 });
+  if (!parsed || parsed.length === 0) return NextResponse.json({ error: "파일에서 작업 데이터를 찾지 못했습니다." }, { status: 400 });
 
   const supabase = await createClient();
-  const { data: procs } = await supabase.from("processes").select("id,name,schema_type");
-  const list = (procs ?? []) as { id: string; name: string; schema_type: SchemaType }[];
-  const nameToId = new Map(list.map((p) => [p.name.normalize("NFC"), p.id]));
-
-  let parsed;
-  try {
-    parsed = await parseUploadXlsm(Buffer.from(await file.arrayBuffer()), list);
-  } catch (e) {
-    return NextResponse.json({ error: "엑셀 해석 실패: " + (e as Error).message }, { status: 400 });
-  }
-  if (parsed.length === 0) {
-    return NextResponse.json({ error: "파일에서 작업 데이터를 찾지 못했습니다." }, { status: 400 });
-  }
+  const { data: procs } = await supabase.from("processes").select("id,name");
+  const nameToId = new Map((procs ?? []).map((p) => [String(p.name).normalize("NFC"), p.id]));
 
   // 충돌: 그 작업일에 이미 데이터가 있으면 덮어쓰지 않고 취소
   const { count } = await supabase
@@ -47,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const rows = [];
   for (const p of parsed) {
-    const pid = nameToId.get(p.processName.normalize("NFC"));
+    const pid = nameToId.get(String(p.processName).normalize("NFC"));
     if (!pid) continue;
     rows.push({
       process_id: pid,
