@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
@@ -14,13 +14,13 @@ export default function LoginPage() {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  // 유휴(5시간) 자동 로그아웃으로 돌아온 경우 안내
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("reason") === "timeout")
-      setNotice("5시간 동안 활동이 없어 자동 로그아웃되었습니다. 다시 로그인해 주세요.");
-  }, []);
+  // 유휴(5시간) 자동 로그아웃 복귀 안내 — URL 파라미터에서 1회 도출(effect 불필요, 변하지 않음)
+  const notice = useSyncExternalStore(
+    () => () => {},
+    () => (new URLSearchParams(window.location.search).get("reason") === "timeout"
+      ? "5시간 동안 활동이 없어 자동 로그아웃되었습니다. 다시 로그인해 주세요." : null),
+    () => null,
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

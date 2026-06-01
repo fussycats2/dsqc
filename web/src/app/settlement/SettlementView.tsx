@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { fmtWeight } from "@/lib/types";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
@@ -64,11 +64,14 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // initial/workDate(prop) 변경 시 입력값·기본 날짜 동기화 — effect 대신 "렌더 중 조정" 패턴
+  const [prevKey, setPrevKey] = useState({ initial, workDate });
+  if (prevKey.initial !== initial || prevKey.workDate !== workDate) {
+    setPrevKey({ initial, workDate });
     setVals(toStr(initial));
     setSrc(workDate); setCarry(nextDay(workDate));
     setFrom(workDate); setTo(nextDay(workDate));
-  }, [initial, workDate]);
+  }
 
   const set = (a: string, v: string) => setVals((p) => ({ ...p, [a]: v }));
   const numMap = useMemo(() => {

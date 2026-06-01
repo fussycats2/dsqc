@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkDate } from "@/lib/workDate";
 import {
   COLUMNS, fmtWeight, fmtInt, shipWeight, lossOf, lossRateOf,
-  type ColDef, type Lot, type Process,
+  type ColDef, type Lot,
 } from "@/lib/types";
 import { PRINT_KINDS, STOCK_GROUPS, type PrintKind } from "@/lib/printSets";
 import { PrintShell } from "../PrintShell";

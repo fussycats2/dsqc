@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Process } from "@/lib/types";
 
 type Karat = "18K" | "14K";
@@ -69,6 +69,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
   const router = useRouter();
   // <a href> 대신 클릭 이동 → 호버 시 브라우저 상태바에 URL(경로) 노출 안 됨
   const go = (href: string) => router.push(href);
+  // 호버/포커스 시 라우트 prefetch → 클릭 시 콜드 렌더 대기 없이 즉시 전환(체감 속도 개선)
+  const warm = (href: string) => router.prefetch(href);
   const entry = processes.find((p) => p.schema_type === "entry");
   const activeProcess = processes.find((p) => pathname === `/process/${p.id}`);
 
@@ -82,13 +84,16 @@ export function TabBar({ processes }: { processes: Process[] }) {
     (activeProcess && subOf(activeProcess)) || "빠우",
   );
 
-  useEffect(() => {
-    if (!activeProcess || activeProcess.schema_type === "entry") return;
+  // 다른 공정으로 이동하면 karat/group/sub 세그먼트를 그 공정에 맞춰 동기화.
+  // effect+setState 대신 React 공식 "렌더 중 상태 조정" 패턴 — 이동(id 변경) 시에만 1회 실행.
+  const [syncedId, setSyncedId] = useState(activeProcess?.id);
+  if (activeProcess && activeProcess.schema_type !== "entry" && activeProcess.id !== syncedId) {
+    setSyncedId(activeProcess.id);
     if (activeProcess.karat) setKarat(activeProcess.karat as Karat);
     setGroup(groupOf(activeProcess));
     const s = subOf(activeProcess);
     if (s) setSub(s);
-  }, [activeProcess]);
+  }
 
   const tabs = useMemo(() => {
     return processes.filter((p) => {
@@ -114,9 +119,9 @@ export function TabBar({ processes }: { processes: Process[] }) {
   return (
     <nav className="sticky bottom-0 z-20 border-t border-gray-300 bg-gray-200 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] print:hidden dark:border-neutral-700 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-300 px-2 py-1 dark:border-neutral-700">
-        <button type="button" onClick={() => go("/")} className={pill(pathname === "/")}>🏠 대시보드</button>
+        <button type="button" onClick={() => go("/")} onMouseEnter={() => warm("/")} onFocus={() => warm("/")} className={pill(pathname === "/")}>🏠 대시보드</button>
         {entry && (
-          <button type="button" onClick={() => go(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</button>
+          <button type="button" onClick={() => go(`/process/${entry.id}`)} onMouseEnter={() => warm(`/process/${entry.id}`)} onFocus={() => warm(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</button>
         )}
         <span className="text-gray-300 dark:text-neutral-600">|</span>
         <Seg items={[{ key: "18K", label: "18K" }, { key: "14K", label: "14K" }]} value={karat} onChange={(k) => setKarat(k as Karat)} activeBg={accentBg} />
@@ -154,6 +159,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
                 type="button"
                 key={p.id}
                 onClick={() => go(`/process/${p.id}`)}
+                onMouseEnter={() => warm(`/process/${p.id}`)}
+                onFocus={() => warm(`/process/${p.id}`)}
                 className={`${tabBase} ${
                   active
                     ? `${accentBg} border-t-white/80 font-bold text-white`
@@ -173,6 +180,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
         <button
           type="button"
           onClick={() => go("/print")}
+          onMouseEnter={() => warm("/print")}
+          onFocus={() => warm("/print")}
           className={`ml-auto shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             pathname.startsWith("/print")
               ? "bg-slate-700 text-white dark:bg-slate-600"
@@ -184,6 +193,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
         <button
           type="button"
           onClick={() => go("/settlement")}
+          onMouseEnter={() => warm("/settlement")}
+          onFocus={() => warm("/settlement")}
           className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             pathname === "/settlement"
               ? "bg-slate-700 text-white dark:bg-slate-600"

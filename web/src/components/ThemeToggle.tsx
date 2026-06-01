@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark" | "system";
 const KEY = "dsqc.theme";
+const EVT = "dsqc.theme.change"; // change() 후 useSyncExternalStore 재읽기 트리거용
 
 export function applyTheme(theme: Theme) {
   const dark =
@@ -13,18 +14,27 @@ export function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", dark);
 }
 
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
+// localStorage 를 외부 스토어로 구독 — effect+setState 없이 SSR 하이드레이션 안전(+ 탭 간 동기화).
+function subscribe(cb: () => void) {
+  window.addEventListener(EVT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(EVT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
 
-  useEffect(() => {
-    const saved = (localStorage.getItem(KEY) as Theme) ?? "light";
-    setTheme(saved);
-  }, []);
+export function ThemeToggle() {
+  const theme = useSyncExternalStore(
+    subscribe,
+    () => (localStorage.getItem(KEY) as Theme) ?? "light",
+    () => "light" as Theme,
+  );
 
   const change = (t: Theme) => {
-    setTheme(t);
     localStorage.setItem(KEY, t);
     applyTheme(t);
+    window.dispatchEvent(new Event(EVT)); // 구독자(useSyncExternalStore) 재읽기
   };
 
   const opts: { key: Theme; label: string }[] = [

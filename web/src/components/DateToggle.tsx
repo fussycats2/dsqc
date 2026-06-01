@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 const KEY = "dsqc.workDate";
+const EVT = "dsqc.workDate.change"; // change() 후 useSyncExternalStore 재읽기 트리거용
 
 function todayKST(): string {
   // Asia/Seoul 기준 YYYY-MM-DD
@@ -22,20 +23,25 @@ function readCookie(): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+// 쿠키를 외부 스토어로 구독 — effect+setState 없이 SSR 하이드레이션 안전.
+function subscribe(cb: () => void) {
+  window.addEventListener(EVT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(EVT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
 // 작업 날짜 토글 (◀ 날짜 ▶ · 오늘). 쿠키에 저장 → 서버가 그 날짜 데이터로 필터.
 export function DateToggle() {
   const router = useRouter();
-  const [date, setDate] = useState<string>(todayKST());
-
-  useEffect(() => {
-    const saved = readCookie();
-    if (saved) setDate(saved);
-  }, []);
+  const date = useSyncExternalStore(subscribe, () => readCookie() ?? todayKST(), todayKST);
 
   const change = (v: string) => {
-    setDate(v);
     // 1년 보존 쿠키 + 서버 컴포넌트 재실행(작업일 필터 반영)
     document.cookie = `${KEY}=${v}; path=/; max-age=31536000`;
+    window.dispatchEvent(new Event(EVT)); // 구독자(useSyncExternalStore) 재읽기
     router.refresh();
   };
 

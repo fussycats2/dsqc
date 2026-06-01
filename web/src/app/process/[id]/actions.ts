@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { buildGroupedSerial } from "@/lib/serial";
@@ -79,33 +80,51 @@ export async function sendRows(
   if (valid.length === 0) return { error: "입력된 행이 없습니다." };
 
   const wd = await getWorkDate(); // 새 입력은 현재 작업일에 귀속
-  let sent = 0;
-  for (const r of valid) {
-    const { data: serial, error: serr } = await supabase.rpc("next_serial", {
-      p_process_id: targetProcessId,
-    });
-    if (serr) return { error: serr.message };
-    const { error } = await supabase.from("lots").insert({
-      serial,
-      process_id: targetProcessId,
-      side: "in",
-      status: "작업중",
-      prev_process_id: sourceProcessId,
-      description: toStr(r.description),
-      qty: toNum(r.qty),
-      weight: toNum(r.weight), // 중량
-      tag: toNum(r.tag),
-      q: toNum(r.q),
-      due_date: toStr(r.due_date),
-      raw_weight: toStr(r.raw_weight), // 원중량 = 자유 텍스트
-      note: toStr(r.note),
-      work_date: wd,
-    });
+  const row = (r: EntryRow, serial: string) => ({
+    serial,
+    process_id: targetProcessId,
+    side: "in",
+    status: "작업중",
+    prev_process_id: sourceProcessId,
+    description: toStr(r.description),
+    qty: toNum(r.qty),
+    weight: toNum(r.weight), // 중량
+    tag: toNum(r.tag),
+    q: toNum(r.q),
+    due_date: toStr(r.due_date),
+    raw_weight: toStr(r.raw_weight), // 원중량 = 자유 텍스트
+    note: toStr(r.note),
+    work_date: wd,
+  });
+
+  // 빠른 경로: 일련번호 N개를 1콜로 발번 (next_serials RPC, migration 0012).
+  //  PostgREST의 setof text 응답 형태(스칼라 배열 ["S1",..] / 객체 배열 [{...:"S1"},..]) 모두 수용.
+  const { data: rpcData, error: berr } = await supabase.rpc("next_serials", {
+    p_process_id: targetProcessId, p_count: valid.length,
+  });
+  let serials: string[] | null = null;
+  if (!berr && Array.isArray(rpcData) && rpcData.length === valid.length) {
+    const arr = rpcData.map((d: unknown) =>
+      typeof d === "string" ? d
+        : d && typeof d === "object" ? Object.values(d as Record<string, unknown>)[0]
+          : null,
+    );
+    if (arr.every((s): s is string => typeof s === "string" && s.length > 0)) serials = arr;
+  }
+  if (serials) {
+    const { error } = await supabase.from("lots").insert(valid.map((r, i) => row(r, serials![i])));
     if (error) return { error: error.message };
-    sent++;
+  } else {
+    // 폴백: RPC 미적용/형태 불일치 — 기존 단건 발번(행 사이 insert로 순번 증가) 유지
+    for (const r of valid) {
+      const { data: serial, error: serr } = await supabase.rpc("next_serial", { p_process_id: targetProcessId });
+      if (serr) return { error: serr.message };
+      const { error } = await supabase.from("lots").insert(row(r, serial as string));
+      if (error) return { error: error.message };
+    }
   }
   revalidatePath(`/process/${targetProcessId}`);
-  return { ok: true, sent };
+  return { ok: true, sent: valid.length };
 }
 
 // ───────── 작업완료=집계 (Module7, work 전용): 작업중 N건 → 완료 1건 ─────────
@@ -127,9 +146,11 @@ export async function completeLots(
   if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
 
   const serial = buildGroupedSerial(lots.map((l) => l.serial));
-  const { data: out } = await supabase
+  const outId = randomUUID(); // id를 직접 부여 → 읽기-후-삽입 없이 lot_links 일괄 생성
+  const { error: insErr } = await supabase
     .from("lots")
     .insert({
+      id: outId,
       serial,
       process_id: processId,
       side: "out",
@@ -144,20 +165,68 @@ export async function completeLots(
       due_date: joinText(lots, "due_date"),                 // 납기(H) 중복제거 결합
       note: joinText(lots, "note"),                         // 비고(J) 중복제거 결합
       work_date: lots[0]?.work_date, // 집계 결과는 원본 작업일 승계
-    })
-    .select("id")
-    .single();
-  if (!out) return { error: "완료행 생성 실패" };
+    });
+  if (insErr) return { error: "완료행 생성 실패: " + insErr.message };
 
-  for (const l of lots) {
-    await supabase.from("lot_links").insert({ from_lot: l.id, to_lot: out.id, relation: "merge" });
-    await supabase
-      .from("lots")
+  // N+1 제거: lot_links 일괄 insert + 원본 잠금 일괄 update(.in) 을 병렬 실행
+  const [lk, up] = await Promise.all([
+    supabase.from("lot_links").insert(lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" }))),
+    supabase.from("lots")
       .update({ status: "완료", locked: true, completed_at: new Date().toISOString() })
-      .eq("id", l.id);
-  }
+      .in("id", lots.map((l) => l.id)),
+  ]);
+  if (lk.error) return { error: lk.error.message };
+  if (up.error) return { error: up.error.message };
   revalidatePath(`/process/${processId}`);
   return { ok: true, merged: lots.length, serial };
+}
+
+// ───────── 이동류 공통 (투입·타부서투입·이관·출고): N+1 제거 ─────────
+//  · 새 행 id를 직접 부여 → 읽기-후-삽입 없이 lot_links 일괄 생성
+//  · 파트명 조회 2건(원본·대상)만 선조회, 그 뒤 insert/lot_links/원본잠금은 각 1콜(.in)
+//  · build(l, srcName): 흐름별 행 매핑(serial/side/중량 등). 공통필드(id/대상/상태/작업일)는 여기서 주입
+type MoveBuild = (l: LotRow, srcName: string | null) => Record<string, unknown>;
+async function moveLots(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sourceProcessId: string,
+  targetProcessId: string,
+  lotIds: string[],
+  build: MoveBuild,
+) {
+  if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
+  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
+  if (error) return { error: "DB: " + error.message };
+  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
+
+  const [srcName, tgtName] = await Promise.all([
+    nameOf(supabase, sourceProcessId),
+    nameOf(supabase, targetProcessId),
+  ]);
+  const now = new Date().toISOString();
+  const newLots = lots.map((l) => ({
+    id: randomUUID(),
+    process_id: targetProcessId,
+    status: "작업중",
+    prev_process_id: sourceProcessId,
+    work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
+    ...build(l, srcName),
+  }));
+  const ins = await supabase.from("lots").insert(newLots);
+  if (ins.error) return { error: ins.error.message };
+
+  const [lk, up] = await Promise.all([
+    supabase.from("lot_links").insert(
+      lots.map((l, i) => ({ from_lot: l.id, to_lot: newLots[i].id, relation: "move" })),
+    ),
+    supabase.from("lots").update({
+      locked: true, status: "완료", moved_at: now, moved_to_name: tgtName,
+    }).in("id", lots.map((l) => l.id)),
+  ]);
+  if (lk.error) return { error: lk.error.message };
+  if (up.error) return { error: up.error.message };
+  revalidatePath(`/process/${sourceProcessId}`);
+  revalidatePath(`/process/${targetProcessId}`);
+  return { ok: true, moved: lots.length };
 }
 
 // ───────── 투입 (Module4): io/검수 입고행 → work 작업중 ─────────
@@ -168,47 +237,17 @@ export async function feedToWork(
   targetProcessId: string,
   lotIds: string[],
 ) {
-  if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
-  if (error) return { error: "DB: " + error.message };
-  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
-  const srcName = await nameOf(supabase, sourceProcessId);
-
-  for (const l of lots) {
-    const { data: created } = await supabase
-      .from("lots")
-      .insert({
-        serial: l.serial,
-        process_id: targetProcessId,
-        side: "in",
-        status: "작업중",
-        prev_process_id: sourceProcessId,
-        prev_part_name: partStamp(srcName),
-        description: l.description,
-        qty: l.qty,
-        weight_in: l.weight, // 입중량 ← 원본 중량
-        weight: round2(N(l.weight) + N(l.tag) + N(l.q) + N(l.raw_weight)) || null, // 중량(K)=D+E+F+H
-        tag: l.tag,
-        q: l.q,
-        due_date: l.due_date,
-        raw_weight: l.raw_weight,
-        note: l.note,
-        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
-      })
-      .select("id")
-      .single();
-    if (created)
-      await supabase.from("lot_links").insert({ from_lot: l.id, to_lot: created.id, relation: "move" });
-    await supabase.from("lots").update({
-      locked: true, status: "완료",
-      moved_at: new Date().toISOString(),
-      moved_to_name: await nameOf(supabase, targetProcessId),
-    }).eq("id", l.id);
-  }
-  revalidatePath(`/process/${sourceProcessId}`);
-  revalidatePath(`/process/${targetProcessId}`);
-  return { ok: true, moved: lots.length };
+  return moveLots(supabase, sourceProcessId, targetProcessId, lotIds, (l, srcName) => ({
+    serial: l.serial,
+    side: "in",
+    prev_part_name: partStamp(srcName),
+    description: l.description,
+    qty: l.qty,
+    weight_in: l.weight, // 입중량 ← 원본 중량
+    weight: round2(N(l.weight) + N(l.tag) + N(l.q) + N(l.raw_weight)) || null, // 중량(K)=D+E+F+H
+    tag: l.tag, q: l.q, due_date: l.due_date, raw_weight: l.raw_weight, note: l.note,
+  }));
 }
 
 // ───────── 타부서투입 (Module16): io/검수 입고행 → 다른 io 출고블록 ─────────
@@ -218,46 +257,16 @@ export async function feedToOtherDept(
   targetProcessId: string,
   lotIds: string[],
 ) {
-  if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
-  if (error) return { error: "DB: " + error.message };
-  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
-  const srcName = await nameOf(supabase, sourceProcessId);
-
-  for (const l of lots) {
-    const { data: created } = await supabase
-      .from("lots")
-      .insert({
-        serial: l.serial,
-        process_id: targetProcessId,
-        side: "out",
-        status: "작업중",
-        prev_process_id: sourceProcessId,
-        prev_part_name: srcName,
-        description: l.description,
-        qty: l.qty,
-        weight: l.weight, // 실중량 ← 원본 중량
-        tag: l.tag,
-        q: l.q,
-        due_date: l.due_date,
-        raw_weight: l.raw_weight,
-        note: l.note,
-        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
-      })
-      .select("id")
-      .single();
-    if (created)
-      await supabase.from("lot_links").insert({ from_lot: l.id, to_lot: created.id, relation: "move" });
-    await supabase.from("lots").update({
-      locked: true, status: "완료",
-      moved_at: new Date().toISOString(),
-      moved_to_name: await nameOf(supabase, targetProcessId),
-    }).eq("id", l.id);
-  }
-  revalidatePath(`/process/${sourceProcessId}`);
-  revalidatePath(`/process/${targetProcessId}`);
-  return { ok: true, moved: lots.length };
+  return moveLots(supabase, sourceProcessId, targetProcessId, lotIds, (l, srcName) => ({
+    serial: l.serial,
+    side: "out",
+    prev_part_name: srcName,
+    description: l.description,
+    qty: l.qty,
+    weight: l.weight, // 실중량 ← 원본 중량
+    tag: l.tag, q: l.q, due_date: l.due_date, raw_weight: l.raw_weight, note: l.note,
+  }));
 }
 
 // ───────── 이관 (Module9): work 완료행 → 다른 work 작업중 ─────────
@@ -267,46 +276,16 @@ export async function relayToWork(
   targetProcessId: string,
   lotIds: string[],
 ) {
-  if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
-  if (error) return { error: "DB: " + error.message };
-  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
-  const srcName = await nameOf(supabase, sourceProcessId);
-
-  for (const l of lots) {
-    const { data: created } = await supabase
-      .from("lots")
-      .insert({
-        serial: l.serial,
-        process_id: targetProcessId,
-        side: "in",
-        status: "작업중",
-        prev_process_id: sourceProcessId,
-        prev_part_name: partStamp(srcName),
-        description: l.description,
-        qty: l.qty,
-        weight: l.weight, // 중량(K) ← 작업후(Q)
-        tag: l.tag,
-        q: l.q,
-        due_date: l.due_date,
-        raw_weight: l.raw_weight,
-        note: l.note,
-        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
-      })
-      .select("id")
-      .single();
-    if (created)
-      await supabase.from("lot_links").insert({ from_lot: l.id, to_lot: created.id, relation: "move" });
-    await supabase.from("lots").update({
-      locked: true, status: "완료",
-      moved_at: new Date().toISOString(),
-      moved_to_name: await nameOf(supabase, targetProcessId),
-    }).eq("id", l.id);
-  }
-  revalidatePath(`/process/${sourceProcessId}`);
-  revalidatePath(`/process/${targetProcessId}`);
-  return { ok: true, moved: lots.length };
+  return moveLots(supabase, sourceProcessId, targetProcessId, lotIds, (l, srcName) => ({
+    serial: l.serial,
+    side: "in",
+    prev_part_name: partStamp(srcName),
+    description: l.description,
+    qty: l.qty,
+    weight: l.weight, // 중량(K) ← 작업후(Q)
+    tag: l.tag, q: l.q, due_date: l.due_date, raw_weight: l.raw_weight, note: l.note,
+  }));
 }
 
 // ───────── 출고 (Module10, 현장출고/검수출고): work 완료행 → io 출고블록 ─────────
@@ -316,47 +295,16 @@ export async function shipToIo(
   targetProcessId: string,
   lotIds: string[],
 ) {
-  if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
-  if (error) return { error: "DB: " + error.message };
-  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
-  const srcName = await nameOf(supabase, sourceProcessId);
-
-  for (const l of lots) {
-    const realWeight = round2(N(l.weight) - N(l.tag) - N(l.q) - N(l.raw_weight)); // 실중량 O = Q−T−U−W
-    const { data: created } = await supabase
-      .from("lots")
-      .insert({
-        serial: l.serial,
-        process_id: targetProcessId,
-        side: "out",
-        status: "작업중",
-        prev_process_id: sourceProcessId,
-        prev_part_name: srcName,
-        description: l.description,
-        qty: l.qty,
-        weight: realWeight || null, // 실중량
-        tag: l.tag,
-        q: l.q,
-        due_date: l.due_date,
-        raw_weight: l.raw_weight,
-        note: l.note,
-        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
-      })
-      .select("id")
-      .single();
-    if (created)
-      await supabase.from("lot_links").insert({ from_lot: l.id, to_lot: created.id, relation: "move" });
-    await supabase.from("lots").update({
-      locked: true, status: "완료",
-      moved_at: new Date().toISOString(),
-      moved_to_name: await nameOf(supabase, targetProcessId),
-    }).eq("id", l.id);
-  }
-  revalidatePath(`/process/${sourceProcessId}`);
-  revalidatePath(`/process/${targetProcessId}`);
-  return { ok: true, moved: lots.length };
+  return moveLots(supabase, sourceProcessId, targetProcessId, lotIds, (l, srcName) => ({
+    serial: l.serial,
+    side: "out",
+    prev_part_name: srcName,
+    description: l.description,
+    qty: l.qty,
+    weight: round2(N(l.weight) - N(l.tag) - N(l.q) - N(l.raw_weight)) || null, // 실중량 O = Q−T−U−W
+    tag: l.tag, q: l.q, due_date: l.due_date, raw_weight: l.raw_weight, note: l.note,
+  }));
 }
 
 // ───────── 분할 (Module1 확장): 1건 → 사용자가 지정한 수량/중량으로 n건. 원본 삭제 ─────────
@@ -417,18 +365,20 @@ export async function tagAdjust(
   const { data } = await supabase
     .from("lots").select("id, tag").in("id", targets.map((t) => t.id));
   const tagOf = new Map((data ?? []).map((l) => [l.id as string, Number(l.tag) || 0]));
-  let n = 0;
-  for (const it of targets) {
-    if (!tagOf.has(it.id)) continue;
+  const valid = targets.filter((it) => tagOf.has(it.id));
+  if (valid.length === 0) return { error: "보정할 행이 없습니다." };
+  // 행마다 값(잔여수량)이 달라 단일 .in() 불가 → 병렬 실행으로 라운드트립을 1회 수준으로
+  const results = await Promise.all(valid.map((it) => {
     const tw = Math.floor(it.qty * 0.035 * 100) / 100; // ROUNDDOWN 2자리
     const tl = round2((tagOf.get(it.id) ?? 0) - tw);
-    await supabase.from("lots")
+    return supabase.from("lots")
       .update({ tag_fixed: it.qty, tag_weight: tw, tag_loss: tl })
       .eq("id", it.id);
-    n++;
-  }
+  }));
+  const err = results.find((r) => r.error)?.error;
+  if (err) return { error: err.message };
   revalidatePath(`/process/${processId}`);
-  return n === 0 ? { error: "보정할 행이 없습니다." } : { ok: true, adjusted: n };
+  return { ok: true, adjusted: valid.length };
 }
 
 // ───────── Tag 확정 (Module36, 검수 전용): 실중량 있고 Tag중량 비면 Tag중량=Tag ─────────
@@ -439,7 +389,12 @@ export async function tagConfirm(processId: string) {
     .eq("process_id", processId).eq("side", "out")
     .not("weight", "is", null).is("tag_weight", null).not("tag", "is", null);
   const rows = (data ?? []) as { id: string; tag: number | null }[];
-  for (const l of rows) await supabase.from("lots").update({ tag_weight: l.tag }).eq("id", l.id);
+  // 값(Tag)이 행마다 달라 단일 update 불가 → 병렬 실행
+  const results = await Promise.all(
+    rows.map((l) => supabase.from("lots").update({ tag_weight: l.tag }).eq("id", l.id)),
+  );
+  const err = results.find((r) => r.error)?.error;
+  if (err) return { error: err.message };
   revalidatePath(`/process/${processId}`);
   return { ok: true, filled: rows.length };
 }

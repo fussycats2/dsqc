@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { closeDay, moveDate } from "./closeActions";
 
 const nextDay = (d: string) => {
@@ -26,11 +26,13 @@ export function DayClose({ workDate }: { workDate: string }) {
   const [confirmBox, setConfirmBox] = useState<ConfirmBox | null>(null);
   const [pending, start] = useTransition();
 
-  // 작업일 토글로 날짜가 바뀌면 기본값 동기화
-  useEffect(() => {
+  // 작업일 토글로 날짜(prop)가 바뀌면 기본값 동기화 — effect 대신 React 공식 "렌더 중 조정" 패턴
+  const [prevWorkDate, setPrevWorkDate] = useState(workDate);
+  if (workDate !== prevWorkDate) {
+    setPrevWorkDate(workDate);
     setSrc(workDate); setCarry(nextDay(workDate));
     setFrom(workDate); setTo(nextDay(workDate));
-  }, [workDate]);
+  }
 
   const runClose = () => start(async () => {
     const r = await closeDay(src, carry);

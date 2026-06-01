@@ -807,6 +807,9 @@ export function ProcessView({
   const inIds = [...selIn], outIds = [...selOut];
   const nIn = inIds.length, nOut = outIds.length;
   const selectedLocked = [...inIds, ...outIds].filter((id) => lockedSet.has(id));
+  // 잠금행이 하나라도 선택되면 수정·잠금해제·삭제를 뺀 모든 선택 액션 비활성
+  //  → 잠금행은 맨 오른쪽 "잠금 해제·삭제"로만 삭제 가능(일반 삭제로 안 지워짐)
+  const hasLocked = selectedLocked.length > 0;
   const selInRows = inRows.filter((r) => selIn.has(r.id));
   const selOutRows = outRows.filter((r) => selOut.has(r.id));
 
@@ -867,16 +870,16 @@ export function ProcessView({
 
           {isWork ? (
             <>
-              <Btn tone="primary" disabled={pending || nIn === 0}
+              <Btn tone="primary" disabled={pending || nIn === 0 || hasLocked}
                 onClick={() => setCompleteOpen(true)}>
                 작업완료(집계)
               </Btn>
             </>
           ) : (
             <>
-              <TargetAction label="투입 →" tone="indigo" targets={workTargets} disabled={pending || nIn === 0}
+              <TargetAction label="투입 →" tone="indigo" targets={workTargets} disabled={pending || nIn === 0 || hasLocked}
                 onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 투입`)} />
-              <TargetAction label="타부서투입 →" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0}
+              <TargetAction label="타부서투입 →" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0 || hasLocked}
                 onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서투입`)} />
             </>
           )}
@@ -885,7 +888,7 @@ export function ProcessView({
             <input type="number" min={2} value={splitN}
               onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))}
               className="w-12 rounded-md bg-white px-1.5 py-1 text-right text-xs dark:bg-neutral-900" />
-            <Btn tone="amber" disabled={pending || nIn !== 1}
+            <Btn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
               onClick={() => setSplitRowId(inIds[0])}>나누기</Btn>
           </div>
           {/* 목표중량 조합 찾기 (공정 전용) */}
@@ -904,7 +907,7 @@ export function ProcessView({
               <Btn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</Btn>
             </div>
           )}
-          <Btn tone="ghost" disabled={pending || nIn === 0}
+          <Btn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
             onClick={() => askConfirm(`${isWork ? "작업중" : "입고"} ${nIn}건을 삭제할까요?`,
               () => run(() => deleteLots(process.id, inIds), (r) => `${r.deleted}건 삭제`))}>
             {isWork ? "작업중 삭제" : "입고 삭제"}
@@ -914,16 +917,16 @@ export function ProcessView({
 
           {isWork ? (
             <>
-              <TargetAction label="이관 →" tone="rose" targets={workTargets} disabled={pending || nOut === 0}
+              <TargetAction label="이관 →" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 이관`)} />
-              <TargetAction label="현장출고 →" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0}
+              <TargetAction label="현장출고 →" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
-              <TargetAction label="검수출고 →" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0}
+              <TargetAction label="검수출고 →" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
             </>
           ) : (
             <>
-              <Btn tone="indigo" disabled={pending || nOut === 0}
+              <Btn tone="indigo" disabled={pending || nOut === 0 || hasLocked}
                 onClick={() => setTagAdjustOpen(true)}>
                 Tag 보정
               </Btn>
@@ -935,7 +938,7 @@ export function ProcessView({
               )}
             </>
           )}
-          <Btn tone="ghost" disabled={pending || nOut === 0}
+          <Btn tone="ghost" disabled={pending || nOut === 0 || hasLocked}
             onClick={() => askConfirm(`${isWork ? "완료" : "출고"} ${nOut}건을 삭제할까요?`,
               () => run(() => deleteLots(process.id, outIds), (r) => `${r.deleted}건 삭제`))}>
             {isWork ? "완료 삭제" : "출고 삭제"}
