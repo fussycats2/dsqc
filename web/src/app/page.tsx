@@ -390,6 +390,15 @@ export default async function Home() {
     .filter((x) => x.cnt > 0);
   const pendingTotal = pending.reduce((a, x) => a + x.cnt, 0);
 
+  // 공정(work) 중량오차 — 오차 = 입고 − 재고 − 출고 − 로스 (정상이면 0). 18K·14K 공정만.
+  const errs = procList
+    .filter((p) => p.schema_type === "work")
+    .map((p) => {
+      const a = agg.get(p.id) ?? EMPTY;
+      return { p, err: round2(a.inW - a.stock - a.outW - a.lossW) };
+    })
+    .filter((x) => x.err !== 0);
+
   return (
     <main className="space-y-5 p-6">
       {/* 상단 제목 — 설명은 제목 오른쪽에 인라인 */}
@@ -438,6 +447,28 @@ export default async function Home() {
                   className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800"
                 >
                   {p.name} <b className="tabular-nums">{cnt}</b>건
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+        {errs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 dark:border-rose-800/60 dark:bg-rose-950/30">
+            <div className="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
+              ⚠️ 공정 중량오차 {errs.length}건 — 집계 불일치 확인 필요
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {errs.map(({ p, err }) => (
+                <Link
+                  key={p.id}
+                  href={`/process/${p.id}`}
+                  className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100 dark:border-rose-700 dark:bg-neutral-900 dark:text-rose-200 dark:hover:bg-neutral-800"
+                >
+                  {p.name}{" "}
+                  <b className="tabular-nums">
+                    {err > 0 ? "+" : ""}
+                    {fmtWeight(err)}
+                  </b>
                 </Link>
               ))}
             </div>
