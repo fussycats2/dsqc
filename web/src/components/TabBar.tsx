@@ -141,7 +141,7 @@ export function TabBar({ processes }: { processes: Process[] }) {
         </div>
       </div>
 
-      <div className="flex min-h-[36px] gap-1 overflow-x-auto px-2 py-1.5">
+      <div className="flex min-h-[36px] items-center gap-1 overflow-x-auto px-2 py-1.5">
         {tabs.length === 0 ? (
           <span className="px-3 py-1.5 text-xs text-gray-400 dark:text-neutral-500">
             해당 분류에 공정이 없습니다.
@@ -169,6 +169,18 @@ export function TabBar({ processes }: { processes: Process[] }) {
             );
           })
         )}
+        {/* 결산서 — 하단 탭 맨 오른쪽 고정 */}
+        <button
+          type="button"
+          onClick={() => go("/settlement")}
+          className={`ml-auto shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            pathname === "/settlement"
+              ? "bg-slate-700 text-white dark:bg-slate-600"
+              : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+          }`}
+        >
+          📑 결산서
+        </button>
       </div>
     </nav>
   );
