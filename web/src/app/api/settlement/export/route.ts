@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "날짜(date)가 필요합니다." }, { status: 400 });
   }
   const data = await getSettlement(date);
-  const buf = await fillSettlementXlsm(data);
+  const buf = await fillSettlementXlsm(data, date);
   const fname = encodeURIComponent(`품질결산서_${date}.xlsm`);
   return new NextResponse(new Uint8Array(buf), {
     headers: {

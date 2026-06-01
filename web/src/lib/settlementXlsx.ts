@@ -4,7 +4,13 @@
 import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { INPUT_CELLS, type CellMap } from "./settlement";
+import { INPUT_CELLS, CELL_ALIAS, type CellMap } from "./settlement";
+
+// 엑셀 날짜 일련번호(1899-12-30 기준)
+function excelSerial(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000);
+}
 
 const TEMPLATE_PATH = path.join(process.cwd(), "templates", "품질결산서.xlsm");
 const SHEET_NAME = "일일결산서";
@@ -30,17 +36,32 @@ function injectCell(xml: string, ref: string, val: number): string {
 }
 
 // 결산 데이터 → 채워진 .xlsm 버퍼 (다운로드용)
-export async function fillSettlementXlsm(data: CellMap): Promise<Buffer> {
+export async function fillSettlementXlsm(data: CellMap, workDate: string): Promise<Buffer> {
   const tpl = await readFile(TEMPLATE_PATH);
   const zip = await JSZip.loadAsync(tpl);
   const sheetPath = await resolveSheetPath(zip);
   let xml = await zip.file(sheetPath)!.async("string");
   for (const ref of INPUT_CELLS) {
     const v = data[ref];
-    if (v == null) continue;
-    xml = injectCell(xml, ref, v);
+    if (v != null) xml = injectCell(xml, ref, v);
   }
+  // 현분잔량 등 웹 전용 키 → 매핑된 빈 셀
+  for (const [key, cell] of Object.entries(CELL_ALIAS)) {
+    const v = data[key];
+    if (v != null) xml = injectCell(xml, cell, v);
+  }
+  // 날짜(A2) = 작업일 (스타일=날짜서식 보존)
+  xml = injectCell(xml, "A2", excelSerial(workDate));
   zip.file(sheetPath, xml);
+
+  // 열 때 전체 재계산 강제 — SUM 등 외부편집 셀의 캐시 미갱신(더블클릭해야 계산) 방지
+  let wbx = await zip.file("xl/workbook.xml")!.async("string");
+  if (!/fullCalcOnLoad/.test(wbx)) {
+    wbx = /<calcPr\b/.test(wbx)
+      ? wbx.replace(/<calcPr\b/, '<calcPr fullCalcOnLoad="1"')
+      : wbx.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>');
+    zip.file("xl/workbook.xml", wbx);
+  }
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
@@ -50,13 +71,20 @@ export async function parseSettlementXlsm(buf: Buffer): Promise<CellMap> {
   const sheetPath = await resolveSheetPath(zip);
   const xml = await zip.file(sheetPath)!.async("string");
   const data: CellMap = {};
-  for (const ref of INPUT_CELLS) {
+  const read = (cell: string): number | null => {
     // 입력셀은 t 속성 없는 숫자(<v>). 비어있으면 self-closing → 매칭 안 됨(건너뜀).
-    const m = new RegExp(`<c r="${ref}"(?![^>]*t=")[^>]*><v>([^<]*)</v></c>`).exec(xml);
-    if (m) {
-      const n = Number(m[1]);
-      if (!Number.isNaN(n)) data[ref] = n;
-    }
+    const m = new RegExp(`<c r="${cell}"(?![^>]*t=")[^>]*><v>([^<]*)</v></c>`).exec(xml);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isNaN(n) ? null : n;
+  };
+  for (const ref of INPUT_CELLS) {
+    const v = read(ref);
+    if (v != null) data[ref] = v;
+  }
+  for (const [key, cell] of Object.entries(CELL_ALIAS)) {
+    const v = read(cell);
+    if (v != null) data[key] = v;
   }
   return data;
 }

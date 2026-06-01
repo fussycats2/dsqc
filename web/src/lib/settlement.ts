@@ -24,6 +24,10 @@ export const INPUT_CELLS: string[] = [
   ...colRange("CDEFGHIJ", 45),                                     // K14 분석업체별
 ];
 
+// 웹 전용 키 → 엑셀 빈 셀 매핑(현분잔량). 라벨 옆 빈 칸에 넣어 백업/복원 왕복 보존.
+//  K18 '현분잔량 18'=K18라벨 → 옆 L18 / K14 '현분잔량'=L42라벨 → 옆 M42
+export const CELL_ALIAS: Record<string, string> = { hbjr18: "L18", hbjr14: "M42" };
+
 // ───────── 수식칸 계산 (엑셀 수식 그대로) ─────────
 export function derive(d: CellMap): Record<string, number> {
   const s = (addrs: string[]) => round2(addrs.reduce((a, x) => a + g(d, x), 0));
