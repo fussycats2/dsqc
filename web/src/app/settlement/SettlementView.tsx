@@ -12,15 +12,21 @@ const nextDay = (d: string) => {
   x.setUTCDate(x.getUTCDate() + 1);
   return x.toISOString().slice(0, 10);
 };
-
 const COL = "ABCDEFGHIJKLM";
-const cols = (start: string, n: number) =>
+const range = (start: string, n: number) =>
   Array.from({ length: n }, (_, i) => COL[COL.indexOf(start) + i]);
 
 const carriedSet = new Set(CARRY.map(([to]) => to));
 const preserveSet = new Set(PRESERVE);
 
-type Cell = { label: string } | { in: string } | { calc: string } | { blank: true };
+// 셀 스펙: h=헤더 rh=행머리 t=텍스트 in=입력 calc=계산 e=빈칸(b=테두리)
+type C =
+  | { k: "h"; t: string; span?: number }
+  | { k: "rh"; t: string; span?: number }
+  | { k: "t"; t: string; span?: number; cls?: string }
+  | { k: "in"; a: string }
+  | { k: "calc"; a: string; span?: number }
+  | { k: "e"; span?: number; b?: boolean };
 
 const dateInputCls =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
@@ -57,226 +63,142 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const f = useMemo(() => derive(numMap), [numMap]);
   const fmtCalc = (v: number | undefined) => (v ? fmtWeight(v) : "");
 
-  // ───────── 셀 렌더(컴포넌트 아님 — 포커스 유지) ─────────
-  const inCell = (a: string) => {
+  // ───────── 셀 스타일 ─────────
+  const bd = "border border-slate-400 dark:border-neutral-500";
+  const thCls = `${bd} bg-slate-100 px-0.5 py-[3px] text-center text-[9px] font-medium leading-tight text-slate-600 dark:bg-neutral-800 dark:text-neutral-300 print:bg-slate-100`;
+  const rhCls = `${bd} bg-slate-50 px-0.5 py-[3px] text-center text-[10px] font-semibold leading-tight dark:bg-neutral-800/60 print:bg-slate-50`;
+  const tCls = `${bd} px-1 py-[3px] text-[10px] leading-tight`;
+  const calcCls = `${bd} bg-slate-50/70 px-1 py-[3px] text-right text-[10px] font-medium tabular-nums dark:bg-neutral-800/40 print:bg-transparent`;
+
+  const inEl = (a: string) => {
     const tint = preserveSet.has(a)
-      ? "bg-amber-50 dark:bg-amber-900/15"
+      ? "bg-amber-50 dark:bg-amber-900/15 print:bg-transparent"
       : carriedSet.has(a)
-        ? "bg-sky-50 dark:bg-sky-900/15"
+        ? "bg-sky-50 dark:bg-sky-900/15 print:bg-transparent"
         : "";
     return (
       <NumberInput value={vals[a] ?? ""} kind="weight" align="right"
         onChange={(v) => set(a, v)}
-        className={`w-full bg-transparent px-1 py-0.5 outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 ${tint}`} />
+        className={`w-full bg-transparent px-1 py-[3px] text-[10px] outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 ${tint}`} />
     );
   };
-  const calcCell = (a: string) => (
-    <span className="block bg-slate-50 px-1 py-0.5 text-right font-medium tabular-nums text-slate-700 dark:bg-neutral-800/60 dark:text-neutral-200">
-      {fmtCalc(f[a])}
-    </span>
-  );
-  const renderCell = (c: Cell) => {
-    if ("label" in c) return <span className="block px-1 py-0.5 text-center text-slate-500 dark:text-neutral-400">{c.label}</span>;
-    if ("in" in c) return inCell(c.in);
-    if ("calc" in c) return calcCell(c.calc);
-    return null;
+
+  const renderCell = (c: C, key: number) => {
+    if (c.k === "e") return <td key={key} colSpan={c.span} className={c.b ? bd : "border-0 print:border-0"} />;
+    if (c.k === "h") return <td key={key} colSpan={c.span} className={thCls}>{c.t}</td>;
+    if (c.k === "rh") return <td key={key} colSpan={c.span} className={rhCls}>{c.t}</td>;
+    if (c.k === "t") return <td key={key} colSpan={c.span} className={`${tCls} ${c.cls ?? ""}`}>{c.t}</td>;
+    if (c.k === "in") return <td key={key} className={`${bd} p-0`}>{inEl(c.a)}</td>;
+    return <td key={key} colSpan={c.span} className={calcCls}>{fmtCalc(f[c.a])}</td>;
   };
 
-  const tdCls = "border border-slate-200 p-0 dark:border-neutral-700";
-  const thCls = "border border-slate-200 bg-slate-100 px-1 py-0.5 text-center text-[10px] font-medium text-slate-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
-  const rowHeadCls = "border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-center text-[11px] font-semibold whitespace-nowrap dark:border-neutral-700 dark:bg-neutral-800/60";
-
-  // 표 렌더: head[0]=코너라벨, rows[].label=행머리 (컴포넌트 아닌 함수 — 리마운트/포커스유실 방지)
-  const renderGrid = (head: string[], rows: { label: string; cells: Cell[] }[]) => (
-    <table className="border-collapse text-[11px]">
-      <thead>
-        <tr>{head.map((h, i) => <th key={i} className={thCls}>{h}</th>)}</tr>
-      </thead>
+  // 공유 13열 그리드 — 모든 서브표가 같은 열에 정렬(엑셀과 동일)
+  const widths = [60, 56, ...Array(11).fill(50)]; // A, B, C..M
+  const sheet = (title: React.ReactNode, rows: C[][]) => (
+    <table className="border-collapse" style={{ tableLayout: "fixed" }}>
+      <colgroup>{widths.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
       <tbody>
-        {rows.map((r, i) => (
-          <tr key={i}>
-            <th className={rowHeadCls}>{r.label}</th>
-            {r.cells.map((c, j) => <td key={j} className={`${tdCls} min-w-[44px]`}>{renderCell(c)}</td>)}
-          </tr>
-        ))}
+        <tr><td colSpan={13} className="border-0 pb-0.5 pt-1.5 text-left text-[13px] font-bold">{title}</td></tr>
+        {rows.map((r, i) => <tr key={i}>{r.map(renderCell)}</tr>)}
       </tbody>
     </table>
   );
+  const gap: C[] = [{ k: "e", span: 13 }];
+  const titleRow = (t: string): C[] => [{ k: "t", t, span: 13, cls: "border-0 text-center text-[12px] font-bold tracking-wider py-1" }];
+
+  // ───────── K18 ─────────
+  const block18: C[][] = [
+    [{ k: "h", t: "부서별거래" }, ...["관리", "기계", "양장", "캐스팅부", "개발부", "컷팅", "분석", "검수", "계"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 3 }],
+    [{ k: "rh", t: "입고" }, ...range("B", 8).map((c) => ({ k: "in", a: `${c}5` } as C)), { k: "calc", a: "J5" }, { k: "e", span: 3 }],
+    [{ k: "rh", t: "출고" }, ...range("B", 8).map((c) => ({ k: "in", a: `${c}6` } as C)), { k: "calc", a: "J6" }, { k: "e", span: 3 }],
+    gap,
+    [{ k: "h", t: "분석투입량" }, ...["전일누계", "조립양장", "조립기계", "캐.패션", "캐.양장체인", "조립초광", "캐.초광", "소매", "재작업", "바코드", "계", "누계"].map((t) => ({ k: "h", t } as C))],
+    ...[9, 10, 11].map((r, i): C[] => [{ k: "rh", t: ["연마", "스트립핑", "빠우"][i] }, { k: "in", a: `B${r}` }, ...range("C", 9).map((c) => ({ k: "in", a: `${c}${r}` } as C)), { k: "calc", a: `L${r}` }, { k: "calc", a: `M${r}` }]),
+    [{ k: "rh", t: "계" }, ...range("B", 10).map((c) => ({ k: "calc", a: `${c}12` } as C)), { k: "calc", a: "L12" }, { k: "calc", a: "M12" }],
+    [{ k: "e", span: 7 }, { k: "t", t: "전일누계", cls: "text-right text-slate-500" }, { k: "in", a: "I13" }, { k: "t", t: "당일누계", cls: "text-right text-slate-500" }, { k: "calc", a: "K13" }, { k: "e", span: 2 }],
+    gap,
+    [{ k: "h", t: "돌가랑" }, ...["전일재고", "입고", "출고", "계"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 8 }],
+    [{ k: "rh", t: "중량" }, { k: "in", a: "B15" }, { k: "in", a: "C15" }, { k: "in", a: "D15" }, { k: "calc", a: "E15" }, { k: "e", span: 8 }],
+    gap,
+    titleRow("K18 재 고 결 산"),
+    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B18" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량 18", span: 3, cls: "border-0 text-center text-slate-400" }],
+    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "e", span: 1, b: true }],
+    [{ k: "h", t: "K18" }, ...["분석업체", "기계", "양장", "캐스팅", "조립초광", "캐.초광", "땜", "조립2차", "캐스팅2차", "고정값1", "고정값2"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 1, b: true }],
+    [{ k: "rh", t: "중량" }, { k: "calc", a: "B21" }, ...range("C", 10).map((c) => ({ k: "in", a: `${c}21` } as C)), { k: "e", span: 1, b: true }],
+    gap,
+    [{ k: "h", t: "실재고" }, { k: "h", t: "장부재고" }, { k: "h", t: "차중량" }, { k: "e", span: 10 }],
+    [{ k: "calc", a: "A24" }, { k: "calc", a: "B24" }, { k: "calc", a: "C24" }, { k: "e", span: 10 }],
+  ];
+
+  // ───────── K14 ─────────
+  const block14: C[][] = [
+    [{ k: "h", t: "부서별거래" }, ...["관리", "조립부", "캐스팅부", "개발부", "컷팅", "분석", "검수", "계"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 4 }],
+    [{ k: "rh", t: "입고" }, ...range("B", 7).map((c) => ({ k: "in", a: `${c}29` } as C)), { k: "calc", a: "I29" }, { k: "e", span: 4 }],
+    [{ k: "rh", t: "출고" }, ...range("B", 7).map((c) => ({ k: "in", a: `${c}30` } as C)), { k: "calc", a: "I30" }, { k: "e", span: 4 }],
+    gap,
+    [{ k: "h", t: "분석투입량" }, ...["전일누계", "조립", "조립초광", "캐스팅", "캐스팅초광", "초광", "기타", "기타", "재작업", "바코드", "계", "누계"].map((t) => ({ k: "h", t } as C))],
+    ...[33, 34, 35].map((r, i): C[] => [{ k: "rh", t: ["연마", "스트립핑", "빠우"][i] }, { k: "in", a: `B${r}` }, ...range("C", 9).map((c) => ({ k: "in", a: `${c}${r}` } as C)), { k: "calc", a: `L${r}` }, { k: "calc", a: `M${r}` }]),
+    [{ k: "rh", t: "계" }, ...range("B", 10).map((c) => ({ k: "calc", a: `${c}36` } as C)), { k: "calc", a: "L36" }, { k: "calc", a: "M36" }],
+    [{ k: "e", span: 7 }, { k: "t", t: "전일누계", cls: "text-right text-slate-500" }, { k: "in", a: "I37" }, { k: "t", t: "당일누계", cls: "text-right text-slate-500" }, { k: "calc", a: "K37" }, { k: "e", span: 2 }],
+    gap,
+    [{ k: "h", t: "돌가랑" }, ...["전일재고", "입고", "출고", "계"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 8 }],
+    [{ k: "rh", t: "중량" }, { k: "in", a: "B39" }, { k: "in", a: "C39" }, { k: "in", a: "D39" }, { k: "calc", a: "E39" }, { k: "e", span: 8 }],
+    gap,
+    titleRow("K14 재 고 결 산"),
+    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B42" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량", span: 3, cls: "border-0 text-center text-slate-400" }],
+    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "e", span: 1, b: true }],
+    [{ k: "h", t: "K18" }, ...["분석업체", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "실재고", "장부재고", "차중량"].map((t) => ({ k: "h", t } as C))],
+    [{ k: "rh", t: "중량" }, { k: "calc", a: "B45" }, ...range("C", 8).map((c) => ({ k: "in", a: `${c}45` } as C)), { k: "calc", a: "K45" }, { k: "calc", a: "L45" }, { k: "calc", a: "M45" }],
+  ];
 
   // ───────── 저장 / 이월 / 날짜변경 ─────────
   const doSave = () => start(async () => {
     const r = await saveSettlement(workDate, numMap);
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(workDate)} 결산서 저장됨`);
   });
-
   const runCarry = (overwrite: boolean) => start(async () => {
     const r = await carrySettlement(src, carry, overwrite);
     if (r.needConfirm) {
-      setConfirmBox({
-        title: "이미 이월 데이터 있음",
-        lines: [`${fmtD(r.carryDate)} 에 이미 결산 데이터가 있습니다.`, "덮어쓰고 이월할까요?"],
-        yesLabel: "덮어쓰기", onYes: () => runCarry(true),
-      });
+      setConfirmBox({ title: "이미 이월 데이터 있음", lines: [`${fmtD(r.carryDate)} 에 이미 결산 데이터가 있습니다.`, "덮어쓰고 이월할까요?"], yesLabel: "덮어쓰기", onYes: () => runCarry(true) });
       return;
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.date)} 마감값을 ${fmtD(r.carryDate)} 전일값으로 이월`);
   });
-  const doCarry = () => setConfirmBox({
-    title: "📅 결산 마감·이월",
-    lines: [
-      `${fmtD(src)} 결산을 저장(스냅샷)하고`,
-      `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`,
-      "(위탁 분석중량·고정값은 유지)",
-    ],
-    yesLabel: "마감·이월", onYes: () => runCarry(false),
-  });
-
+  const doCarry = () => setConfirmBox({ title: "📅 결산 마감·이월", lines: [`${fmtD(src)} 결산을 저장(스냅샷)하고`, `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`, "(위탁 분석중량·고정값은 유지)"], yesLabel: "마감·이월", onYes: () => runCarry(false) });
   const runMove = (overwrite: boolean) => start(async () => {
     const r = await moveSettlement(from, to, overwrite);
     if (r.needConfirm) {
-      setConfirmBox({
-        title: "기존 데이터 있음",
-        lines: [`${fmtD(r.toDate)} 에 이미 결산서가 있습니다.`, "덮어쓰고 옮길까요?"],
-        yesLabel: "덮어쓰기", onYes: () => runMove(true),
-      });
+      setConfirmBox({ title: "기존 데이터 있음", lines: [`${fmtD(r.toDate)} 에 이미 결산서가 있습니다.`, "덮어쓰고 옮길까요?"], yesLabel: "덮어쓰기", onYes: () => runMove(true) });
       return;
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.fromDate)} → ${fmtD(r.toDate)} 로 결산서 날짜 변경`);
   });
-  const doMove = () => setConfirmBox({
-    title: "🔁 결산서 날짜 변경",
-    lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`, `${fmtD(to)} 의 기존 결산서는 덮어씁니다.`],
-    yesLabel: "변경", onYes: () => runMove(false),
-  });
+  const doMove = () => setConfirmBox({ title: "🔁 결산서 날짜 변경", lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`, `${fmtD(to)} 의 기존 결산서는 덮어씁니다.`], yesLabel: "변경", onYes: () => runMove(false) });
 
-  // ───────── 한 블록(K18/K14) ─────────
-  const Block18 = (
-    <section className="space-y-2">
-      <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400">K18</h3>
-      {/* 부서별거래 */}
-      {renderGrid(
-        ["부서별거래", "관리", "기계", "양장", "캐스팅부", "개발부", "컷팅", "분석", "검수", "계"],
-        [
-          { label: "입고", cells: [...cols("B", 8).map((c) => ({ in: `${c}5` })), { calc: "J5" }] },
-          { label: "출고", cells: [...cols("B", 8).map((c) => ({ in: `${c}6` })), { calc: "J6" }] },
-        ],
-      )}
-      {/* 분석투입량 */}
-      {renderGrid(
-        ["분석투입량", "전일누계", "조립양장", "조립기계", "캐.패션", "캐.양장체인", "조립초광", "캐.초광", "소매", "재작업", "바코드", "계", "누계"],
-        [9, 10, 11].map((r, i) => ({
-          label: ["연마", "스트립핑", "빠우"][i],
-          cells: [{ in: `B${r}` }, ...cols("C", 9).map((c) => ({ in: `${c}${r}` })), { calc: `L${r}` }, { calc: `M${r}` }] as Cell[],
-        })).concat([{
-          label: "계",
-          cells: [...cols("B", 11).map((c) => ({ calc: `${c}12` })), { calc: "L12" }, { calc: "M12" }] as Cell[],
-        }]),
-      )}
-      <div className="flex items-center gap-2 text-[11px]">
-        <span className={rowHeadCls}>분석</span>
-        <span className="text-slate-500">전일누계</span><div className="w-24 border border-slate-200 dark:border-neutral-700">{inCell("I13")}</div>
-        <span className="text-slate-500">당일누계</span><div className="w-24">{calcCell("K13")}</div>
-      </div>
-      {/* 돌가랑 */}
-      {renderGrid(
-        ["돌가랑", "전일재고", "입고", "출고", "계"],
-        [{ label: "중량", cells: [{ in: "B15" }, { in: "C15" }, { in: "D15" }, { calc: "E15" }] }],
-      )}
-      {/* K18 재고결산 */}
-      <div className="space-y-1 rounded-lg border border-slate-200 p-2 dark:border-neutral-700">
-        <div className="text-[11px] font-semibold">K18 재고결산</div>
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-slate-500">전일재고</span><div className="w-28 border border-slate-200 dark:border-neutral-700">{inCell("B18")}</div>
-          <span className="text-slate-400">현분잔량 18</span>
-        </div>
-        {renderGrid(
-          ["분석중량", "기계", "양장", "캐스팅", "조립초광", "캐.초광", "땜", "조립2차", "캐스팅2차", "고정값1", "고정값2", "계"],
-          [
-            { label: "위탁", cells: [...cols("C", 10).map((c) => ({ in: `${c}19` })), { calc: "B21" }] },
-            { label: "업체별", cells: [...cols("C", 10).map((c) => ({ in: `${c}21` })), { blank: true }] },
-          ],
-        )}
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="text-slate-500">실재고</span><div className="w-28">{calcCell("A24")}</div>
-          <span className="text-slate-500">장부재고</span><div className="w-28">{calcCell("B24")}</div>
-          <span className="text-slate-500">차중량</span><div className="w-28">{calcCell("C24")}</div>
-        </div>
-      </div>
-    </section>
-  );
-
-  const Block14 = (
-    <section className="space-y-2">
-      <h3 className="text-sm font-bold text-blue-600 dark:text-blue-400">K14</h3>
-      {renderGrid(
-        ["부서별거래", "관리", "조립부", "캐스팅부", "개발부", "컷팅", "분석", "검수", "계"],
-        [
-          { label: "입고", cells: [...cols("B", 7).map((c) => ({ in: `${c}29` })), { calc: "I29" }] },
-          { label: "출고", cells: [...cols("B", 7).map((c) => ({ in: `${c}30` })), { calc: "I30" }] },
-        ],
-      )}
-      {renderGrid(
-        ["분석투입량", "전일누계", "조립", "조립초광", "캐스팅", "캐스팅초광", "초광", "기타", "기타", "재작업", "바코드", "계", "누계"],
-        [33, 34, 35].map((r, i) => ({
-          label: ["연마", "스트립핑", "빠우"][i],
-          cells: [{ in: `B${r}` }, ...cols("C", 9).map((c) => ({ in: `${c}${r}` })), { calc: `L${r}` }, { calc: `M${r}` }] as Cell[],
-        })).concat([{
-          label: "계",
-          cells: [...cols("B", 11).map((c) => ({ calc: `${c}36` })), { calc: "L36" }, { calc: "M36" }] as Cell[],
-        }]),
-      )}
-      <div className="flex items-center gap-2 text-[11px]">
-        <span className={rowHeadCls}>분석</span>
-        <span className="text-slate-500">전일누계</span><div className="w-24 border border-slate-200 dark:border-neutral-700">{inCell("I37")}</div>
-        <span className="text-slate-500">당일누계</span><div className="w-24">{calcCell("K37")}</div>
-      </div>
-      {renderGrid(
-        ["돌가랑", "전일재고", "입고", "출고", "계"],
-        [{ label: "중량", cells: [{ in: "B39" }, { in: "C39" }, { in: "D39" }, { calc: "E39" }] }],
-      )}
-      <div className="space-y-1 rounded-lg border border-slate-200 p-2 dark:border-neutral-700">
-        <div className="text-[11px] font-semibold">K14 재고결산</div>
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-slate-500">전일재고</span><div className="w-28 border border-slate-200 dark:border-neutral-700">{inCell("B42")}</div>
-          <span className="text-slate-400">현분잔량</span>
-        </div>
-        {renderGrid(
-          ["분석중량", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "계"],
-          [
-            { label: "위탁", cells: [...cols("C", 8).map((c) => ({ in: `${c}43` })), { calc: "B45" }] },
-            { label: "업체별", cells: [...cols("C", 8).map((c) => ({ in: `${c}45` })), { blank: true }] },
-          ],
-        )}
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="text-slate-500">실재고</span><div className="w-28">{calcCell("K45")}</div>
-          <span className="text-slate-500">장부재고</span><div className="w-28">{calcCell("L45")}</div>
-          <span className="text-slate-500">차중량</span><div className="w-28">{calcCell("M45")}</div>
-        </div>
-      </div>
-    </section>
+  // 결재란
+  const approval = (cols: string[]) => (
+    <table className="border-collapse text-[10px]">
+      <tbody>
+        <tr>
+          <td rowSpan={2} className={`${bd} w-6 px-1 text-center font-semibold`}>결<br />재</td>
+          {cols.map((c) => <td key={c} className={`${bd} w-16 px-1 py-[3px] text-center`}>{c}</td>)}
+        </tr>
+        <tr>{cols.map((c) => <td key={c} className={`${bd} h-8`} />)}</tr>
+      </tbody>
+    </table>
   );
 
   return (
-    <main className="space-y-4 p-6">
-      {/* 헤더 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 print:block">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">품질관리부 일일 결산서</h1>
-          <span className="text-sm text-slate-500 dark:text-neutral-400">{fmtD(workDate)}</span>
-        </div>
-        <div className="flex items-center gap-2 print:hidden">
-          <button onClick={doSave} disabled={pending}
-            className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">
-            저장
-          </button>
-          <button onClick={() => window.print()}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">
-            인쇄
-          </button>
+    <main className="space-y-3 p-6 print:p-0">
+      {/* 상단 바 (인쇄 숨김) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <h1 className="text-xl font-bold tracking-tight">결산서 <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span></h1>
+        <div className="flex items-center gap-2">
+          <button onClick={doSave} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">저장</button>
+          <button onClick={() => window.print()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">인쇄</button>
         </div>
       </div>
 
-      {/* 마감·이월 / 날짜변경 바 */}
       <section className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm print:hidden dark:border-neutral-800 dark:bg-neutral-900">
         <span className="text-sm font-semibold">📅 마감·이월</span>
         <div className="flex items-center gap-1.5">
@@ -285,10 +207,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
           <input type="date" value={carry} onChange={(e) => setCarry(e.target.value)} className={dateInputCls} />
-          <button onClick={doCarry} disabled={pending}
-            className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">
-            마감·이월
-          </button>
+          <button onClick={doCarry} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">마감·이월</button>
         </div>
         <span className="text-slate-200 dark:text-neutral-700">|</span>
         <span className="text-sm font-semibold">🔁 날짜 변경</span>
@@ -296,41 +215,38 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={dateInputCls} />
           <span className="text-slate-300">→</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={dateInputCls} />
-          <button onClick={doMove} disabled={pending}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">
-            변경
-          </button>
+          <button onClick={doMove} disabled={pending} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">변경</button>
         </div>
         {msg && <span className="text-xs text-slate-500 dark:text-neutral-400">{msg}</span>}
       </section>
 
-      {/* 범례 */}
       <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 print:hidden">
-        <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-sky-50 ring-1 ring-sky-200 dark:bg-sky-900/15" /> 전일값(이월)</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-900/15" /> 보존값(위탁·고정)</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-slate-50 ring-1 ring-slate-200 dark:bg-neutral-800" /> 자동계산</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-sky-50 ring-1 ring-sky-200" /> 전일값(이월)</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" /> 보존값(위탁·고정)</span>
         <span>※ 입고·출고·분석투입량은 추후 ‘결산전송’으로 자동 채움(B단계).</span>
       </div>
 
-      {/* 두 블록 */}
-      <div className="overflow-x-auto">
-        <div className="flex flex-col gap-6 xl:flex-row">{Block18}{Block14}</div>
+      {/* 인쇄 영역 — 엑셀 양식 그대로 */}
+      <div className="mx-auto w-fit bg-white px-2 text-slate-900 dark:bg-white">
+        <div className="py-1 text-center text-[15px] font-bold tracking-wide">품질관리부 일일 결산서</div>
+        <div className="pb-1 text-right text-[11px] text-slate-600">{fmtD(workDate)}</div>
+        {sheet(<span className="text-rose-600">K18</span>, block18)}
+        <div className="h-3" />
+        {sheet(<span className="text-blue-600">K14</span>, block14)}
+        <div className="mt-3 flex justify-end gap-4 pb-2">
+          {approval(["담당", "공장장"])}
+          {approval(["담당", "관리이사", "대표이사"])}
+        </div>
       </div>
 
-      {/* 확인 모달 */}
       {confirmBox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={() => setConfirmBox(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 print:hidden" onClick={() => setConfirmBox(null)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-neutral-800 dark:ring-neutral-700" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-base font-bold">{confirmBox.title}</h3>
-            <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-neutral-300">
-              {confirmBox.lines.map((l, i) => <p key={i}>{l}</p>)}
-            </div>
+            <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-neutral-300">{confirmBox.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setConfirmBox(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-              <button disabled={pending} onClick={() => { const fn = confirmBox.onYes; setConfirmBox(null); fn(); }}
-                className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">
-                {confirmBox.yesLabel}
-              </button>
+              <button disabled={pending} onClick={() => { const fn = confirmBox.onYes; setConfirmBox(null); fn(); }} className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">{confirmBox.yesLabel}</button>
             </div>
           </div>
         </div>
