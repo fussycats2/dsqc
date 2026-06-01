@@ -82,7 +82,7 @@ const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", 
 
 // ───────── 한 블록 테이블 카드 (표시 전용 — 수정은 모달에서만) ─────────
 function LotTable({
-  title, accent, columns, rows, selected, onToggle, onToggleAll,
+  title, accent, columns, rows, selected, onToggle, onToggleAll, headTop,
 }: {
   title: string;
   accent: string;
@@ -91,6 +91,7 @@ function LotTable({
   selected: Set<string>;
   onToggle: (id: string, on: boolean) => void;
   onToggleAll: (on: boolean) => void;
+  headTop: number;        // 표 헤더 sticky top(px) = 전역헤더+툴바 높이
 }) {
   const weightSum = rows.reduce((a, r) => a + (Number(r.weight) || 0), 0);
   const allSel = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -113,7 +114,9 @@ function LotTable({
         </div>
         <span className="text-[11px] tabular-nums text-slate-400">중량 합 {fmtWeight(weightSum)}</span>
       </header>
-      <div className="max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden print:max-h-none print:overflow-visible">
+      {/* 내부 스크롤 없음 — 페이지가 통째로 스크롤되고, 헤더만 툴바 아래에 sticky로 고정.
+          overflow-* 를 주면 스크롤 컨테이너가 생겨 sticky가 다시 갇히므로 금지(table-fixed라 가로 넘침 없음) */}
+      <div>
         <table className="w-full table-fixed text-[11px] leading-tight" onKeyDown={focusNextInput}>
           <colgroup>
             <col style={{ width: pct(CHK_W) }} />
@@ -121,15 +124,15 @@ function LotTable({
           </colgroup>
           <thead>
             <tr className="text-slate-500 dark:text-neutral-400">
-              <th className="sticky top-0 z-10 bg-slate-100 px-1 py-1.5 dark:bg-neutral-800">
+              <th style={{ top: headTop }} className="sticky z-10 bg-slate-100 px-1 py-1.5 dark:bg-neutral-800">
                 <input type="checkbox" checked={allSel} onChange={(e) => onToggleAll(e.target.checked)} />
               </th>
               {columns.map((c, i) => {
                 // Tag수정/Tag중량/Tag로스 헤더는 폭이 좁아 줄바꿈 → 글자만 축소
                 const tight = c.key === "tag_fixed" || c.key === "tag_weight" || c.key === "tag_loss";
                 return (
-                  <th key={i}
-                    className={`sticky top-0 z-10 bg-slate-100 py-1.5 text-center font-medium dark:bg-neutral-800 ${
+                  <th key={i} style={{ top: headTop }}
+                    className={`sticky z-10 bg-slate-100 py-1.5 text-center font-medium dark:bg-neutral-800 ${
                       tight ? "whitespace-nowrap px-0.5 text-[9px]" : "px-1.5"}`}>
                     {c.label}
                   </th>
@@ -549,6 +552,21 @@ export function ProcessView({
     { text: string; onYes: () => void; yesLabel?: string; altLabel?: string; onAlt?: () => void } | null
   >(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 표 헤더 sticky 위치 = 전역헤더(49px) + 액션 툴바 실측 높이.
+  // 툴바가 1~2줄로 감겨 높이가 달라져도 겹치지 않게 런타임 측정(데스크톱 전용).
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [headTop, setHeadTop] = useState(96);
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const update = () => setHeadTop(49 + el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const notify = (kind: "ok" | "err" | "info", text: string) =>
     setToast({ kind, text, id: Date.now() });
   useEffect(() => {
@@ -649,7 +667,7 @@ export function ProcessView({
       </div>
 
       {/* 액션 툴바 */}
-      <div className="sticky top-[49px] z-10 rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
+      <div ref={toolbarRef} className="sticky top-[49px] z-20 rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-400">
             선택 {isWork ? "작업중" : "입고"} <b className="text-slate-600 dark:text-neutral-200">{nIn}</b> · {isWork ? "완료" : "출고"} <b className="text-slate-600 dark:text-neutral-200">{nOut}</b>
@@ -815,10 +833,10 @@ export function ProcessView({
       {/* 두 블록 (적응형: 좁으면 세로, 27"급은 가로) */}
       <div className="flex flex-col gap-3 2xl:flex-row">
         <LotTable title={isWork ? "작업중" : "입고"} accent="bg-emerald-500"
-          columns={cols.in} rows={inRows} selected={selIn}
+          columns={cols.in} rows={inRows} selected={selIn} headTop={headTop}
           onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)} />
         <LotTable title={isWork ? "완료" : "출고"} accent="bg-rose-500"
-          columns={cols.out} rows={outRows} selected={selOut}
+          columns={cols.out} rows={outRows} selected={selOut} headTop={headTop}
           onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)} />
       </div>
 
