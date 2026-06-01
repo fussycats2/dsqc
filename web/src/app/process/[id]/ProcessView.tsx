@@ -6,6 +6,10 @@ import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
 import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
 import { NumberInput } from "@/components/NumberInput";
 import { focusNextInput } from "@/lib/enterNav";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
   splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm, traceLot,
@@ -452,22 +456,23 @@ function CompleteModal({
   const inp = "w-full rounded-md border border-slate-200 px-2 py-1.5 text-base dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-bold">작업완료(집계)</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
-        <div className="mb-4 rounded-xl bg-slate-50 p-3 text-sm dark:bg-neutral-800">
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md" onKeyDown={focusNextInput}>
+        <DialogHeader>
+          <DialogTitle>작업완료(집계)</DialogTitle>
+          <DialogDescription className="sr-only">
+            선택한 작업중 행을 집계하고 작업후 중량을 입력해 로스를 계산합니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-neutral-800">
           <div className="flex justify-between"><span className="text-slate-400">집계 건수</span><b>{rows.length}건</b></div>
           <div className="mt-1 flex justify-between"><span className="text-slate-400">작업전(중량 합)</span><b className="tabular-nums">{fmtWeight(before)}</b></div>
         </div>
-        <label className="block" onKeyDown={focusNextInput}>
+        <label className="block">
           <span className="text-[11px] text-slate-400">작업후 중량</span>
           <NumberInput value={after} kind="weight" onChange={setAfter} className={inp} />
         </label>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 gap-2 text-sm">
           <div className="rounded-lg bg-slate-50 p-2 dark:bg-neutral-800">
             로스 <b className="tabular-nums">{loss == null ? "—" : fmtWeight(loss)}</b>
           </div>
@@ -475,14 +480,14 @@ function CompleteModal({
             로스율 <b className="tabular-nums">{lossRate == null ? "—" : lossRate.toFixed(1) + "%"}</b>
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-slate-400">※ 작업후를 비워두면 나중에 행 수정에서 입력할 수 있습니다.</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-          <button onClick={() => onConfirm(a)} disabled={pending}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">집계 완료</button>
-        </div>
-      </div>
-    </div>
+        <p className="text-[11px] text-slate-400">※ 작업후를 비워두면 나중에 행 수정에서 입력할 수 있습니다.</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>취소</Button>
+          <Button onClick={() => onConfirm(a)} disabled={pending}
+            className="bg-teal-600 text-white hover:bg-teal-700">집계 완료</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
