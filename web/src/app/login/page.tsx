@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
 const DEFAULT_EMAIL = process.env.NEXT_PUBLIC_LOGIN_EMAIL ?? "";
+const LOGO = { backgroundImage: "url(/login-logo.png)" };
 
 export default function LoginPage() {
   const [email, setEmail] = useState(DEFAULT_EMAIL);
@@ -28,35 +29,52 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-[calc(100vh-49px)] items-center justify-center p-6">
-      <form onSubmit={submit}
-        className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div>
-          <h1 className="text-lg font-bold">dsqc · 제조공정 관리</h1>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-neutral-500">공용 계정으로 로그인</p>
+    <main className="flex min-h-screen flex-col md:flex-row">
+      {/* 왼쪽 브랜드 패널 */}
+      <div className="relative flex items-center justify-center bg-[#f3ece2] px-10 py-14 md:w-1/2 dark:bg-neutral-900">
+        <div aria-hidden
+          className="h-40 w-72 bg-contain bg-center bg-no-repeat dark:invert"
+          style={LOGO} />
+        {/* 제작자 정보 (영문) */}
+        <div className="absolute inset-x-0 bottom-5 text-center text-[10px] leading-relaxed text-[#a08a73] dark:text-neutral-600">
+          <span>Created by <span className="font-semibold tracking-wide">chobr_</span></span>
+          <span className="mx-1.5">·</span>
+          <span>Tel. 010-5248-9058</span>
+          <span className="mx-1.5">·</span>
+          <span>Email. ds@deoksin.com</span>
         </div>
+      </div>
 
-        <label className="block">
-          <span className="text-xs text-slate-500 dark:text-neutral-400">이메일</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-            autoComplete="username"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-neutral-700 dark:bg-neutral-900" />
-        </label>
+      {/* 오른쪽 로그인 */}
+      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12 dark:bg-neutral-950">
+        <form onSubmit={submit} className="w-full max-w-sm space-y-5">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">로그인</h1>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-neutral-500">공용 계정으로 로그인하세요</p>
+          </div>
 
-        <label className="block">
-          <span className="text-xs text-slate-500 dark:text-neutral-400">비밀번호</span>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus
-            autoComplete="current-password"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-neutral-700 dark:bg-neutral-900" />
-        </label>
+          <label className="block">
+            <span className="text-xs text-slate-500 dark:text-neutral-400">이메일</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+              autoComplete="username"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#7a5c43] dark:border-neutral-700 dark:bg-neutral-900" />
+          </label>
 
-        {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40">{err}</p>}
+          <label className="block">
+            <span className="text-xs text-slate-500 dark:text-neutral-400">비밀번호</span>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus
+              autoComplete="current-password"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#7a5c43] dark:border-neutral-700 dark:bg-neutral-900" />
+          </label>
 
-        <button type="submit" disabled={busy}
-          className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">
-          {busy ? "로그인 중…" : "로그인"}
-        </button>
-      </form>
+          {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40">{err}</p>}
+
+          <button type="submit" disabled={busy}
+            className="w-full rounded-lg bg-[#4b3526] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3a281c] disabled:opacity-50">
+            {busy ? "로그인 중…" : "로그인"}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
