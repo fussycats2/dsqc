@@ -86,6 +86,7 @@ function cellFor(lot: Lot, col: ColDef): number | string | null {
   const raw = lot[col.key];
   if (raw == null || raw === "") return null;
   if (col.kind === "datetime") return fmtDateTime(String(raw));
+  if (col.key === "due_date") return String(raw); // 납기는 라벨(월/일) — 항상 텍스트(숫자화 방지)
   const s = String(raw).trim();
   if (s === "") return null;
   if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s); // 순수 정수/소수만 숫자로
@@ -242,8 +243,16 @@ function parseDateTime(raw: number | string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// 엑셀 날짜 일련번호 → '월/일' (납기). 엑셀이 "4/5"를 날짜값으로 바꿔버린 경우 복구.
+function serialToMD(serial: number): string {
+  const d = new Date(Math.round((serial - 25569) * 86400000));
+  return Number.isNaN(d.getTime()) ? String(serial) : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+
 function normField(col: ColDef, raw: number | string): number | string | null {
   if (col.kind === "datetime") return parseDateTime(raw);
+  // 납기: 엑셀이 날짜 일련번호(>=40000≈2009년 이후)로 바꿨으면 월/일로 복구, 그 외엔 텍스트 유지
+  if (col.key === "due_date") return typeof raw === "number" && raw >= 40000 ? serialToMD(raw) : String(raw);
   if (col.key === "raw_weight") return String(raw);
   if (col.kind === "int") { const n = Number(raw); return Number.isFinite(n) ? Math.round(n) : null; }
   if (col.kind === "weight") { const n = Number(raw); return Number.isFinite(n) ? n : null; }

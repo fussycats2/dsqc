@@ -70,13 +70,13 @@ describe("uploadXlsx 백업/복원 왕복", () => {
     expect(find("A_260601_003").moved_to_name).toBe("빠우(양장볼)");
   });
 
-  it("엑셀이 시간 텍스트를 날짜 일련번호(숫자)로 바꿔도 가져오기 안전(timestamptz)", async () => {
+  it("엑셀이 시간/납기를 날짜 일련번호(숫자)로 바꿔도 가져오기 안전", async () => {
     const lots: Lot[] = [
-      lot({ id: "1", process_id: "p-io", side: "in", serial: "M_LOCK", weight: 5, moved_at: "2026-06-01T01:00:00.000Z", moved_to_name: "연마(조립)", locked: true }),
+      lot({ id: "1", process_id: "p-io", side: "in", serial: "M_LOCK", weight: 5, due_date: "4/5", moved_at: "2026-06-01T01:00:00.000Z", moved_to_name: "연마(조립)", locked: true }),
     ];
     const buf = await fillUploadXlsm(await template(), procs, lots);
 
-    // 엑셀로 열었다 저장하면 날짜형 텍스트("2026-…" inlineStr)가 숫자 serial로 바뀐다 → 시뮬레이션
+    // 엑셀로 열었다 저장하면 날짜형 텍스트가 숫자 serial로 바뀐다 → 시뮬레이션(시간·납기 둘 다)
     const zip = await JSZip.loadAsync(buf);
     for (const name of Object.keys(zip.files)) {
       if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(name)) continue;
@@ -84,6 +84,10 @@ describe("uploadXlsx 백업/복원 왕복", () => {
       xml = xml.replace(
         /<c r="([A-Z]+\d+)"([^>]*?) t="inlineStr"><is><t[^>]*>2026-\d\d-\d\d[ T][^<]*<\/t><\/is><\/c>/g,
         '<c r="$1"$2><v>46079.5</v></c>',
+      );
+      xml = xml.replace(
+        /<c r="([A-Z]+\d+)"([^>]*?) t="inlineStr"><is><t[^>]*>4\/5<\/t><\/is><\/c>/g,
+        '<c r="$1"$2><v>46117</v></c>', // 46117 = 2026-04-05
       );
       zip.file(name, xml);
     }
@@ -93,5 +97,6 @@ describe("uploadXlsx 백업/복원 왕복", () => {
     expect(rec.locked).toBe(true); // 시간(serial)이 있으면 잠금 유지
     expect(rec.moved_at).toBeTruthy();
     expect(Number.isNaN(Date.parse(rec.moved_at as string))).toBe(false); // "46079.5"가 아니라 유효 타임스탬프
+    expect(rec.due_date).toBe("4/5"); // 납기 일련번호 → 월/일 복구(숫자 아님)
   });
 });
