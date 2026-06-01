@@ -121,13 +121,13 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     [{ k: "rh", t: "중량" }, { k: "in", a: "B15" }, { k: "in", a: "C15" }, { k: "in", a: "D15" }, { k: "calc", a: "E15" }, { k: "e", span: 8 }],
     gap,
     titleRow("K18 재 고 결 산"),
-    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B18" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량 18", span: 3, cls: "border-0 text-center text-slate-400" }],
+    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B18" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량 18", span: 2, cls: "border-0 text-right text-slate-500" }, { k: "in", a: "hbjr18" }],
     [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "e", span: 1, b: true }],
     [{ k: "h", t: "K18" }, ...["분석업체", "기계", "양장", "캐스팅", "조립초광", "캐.초광", "땜", "조립2차", "캐스팅2차", "고정값1", "고정값2"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 1, b: true }],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B21" }, ...range("C", 10).map((c) => ({ k: "in", a: `${c}21` } as C)), { k: "e", span: 1, b: true }],
     gap,
-    [{ k: "h", t: "실재고" }, { k: "h", t: "장부재고" }, { k: "h", t: "차중량" }, { k: "e", span: 10 }],
-    [{ k: "calc", a: "A24" }, { k: "calc", a: "B24" }, { k: "calc", a: "C24" }, { k: "e", span: 10 }],
+    [{ k: "h", t: "실재고", span: 2 }, { k: "h", t: "장부재고", span: 2 }, { k: "h", t: "차중량", span: 2 }, { k: "e", span: 7 }],
+    [{ k: "calc", a: "A24", span: 2 }, { k: "calc", a: "B24", span: 2 }, { k: "calc", a: "C24", span: 2 }, { k: "e", span: 7 }],
   ];
 
   // ───────── K14 ─────────
@@ -145,7 +145,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     [{ k: "rh", t: "중량" }, { k: "in", a: "B39" }, { k: "in", a: "C39" }, { k: "in", a: "D39" }, { k: "calc", a: "E39" }, { k: "e", span: 8 }],
     gap,
     titleRow("K14 재 고 결 산"),
-    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B42" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량", span: 3, cls: "border-0 text-center text-slate-400" }],
+    [{ k: "rh", t: "전일재고" }, { k: "in", a: "B42" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량", span: 2, cls: "border-0 text-right text-slate-500" }, { k: "in", a: "hbjr14" }],
     [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "e", span: 1, b: true }],
     [{ k: "h", t: "K18" }, ...["분석업체", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "실재고", "장부재고", "차중량"].map((t) => ({ k: "h", t } as C))],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B45" }, ...range("C", 8).map((c) => ({ k: "in", a: `${c}45` } as C)), { k: "calc", a: "K45" }, { k: "calc", a: "L45" }, { k: "calc", a: "M45" }],
@@ -180,16 +180,18 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     <table className="border-collapse text-[10px]">
       <tbody>
         <tr>
-          <td rowSpan={2} className={`${bd} w-6 px-1 text-center font-semibold`}>결<br />재</td>
-          {cols.map((c) => <td key={c} className={`${bd} w-16 px-1 py-[3px] text-center`}>{c}</td>)}
+          <td rowSpan={2} className={`${bd} w-7 px-1 text-center font-semibold`}>결<br />재</td>
+          {cols.map((c) => <td key={c} className={`${bd} w-20 px-1 py-1 text-center`}>{c}</td>)}
         </tr>
-        <tr>{cols.map((c) => <td key={c} className={`${bd} h-8`} />)}</tr>
+        <tr>{cols.map((c) => <td key={c} className={`${bd} h-16`} />)}</tr>
       </tbody>
     </table>
   );
 
   return (
     <main className="space-y-3 p-6 print:p-0">
+      {/* 인쇄 여백: 위 넉넉히 / 아래 최소 */}
+      <style dangerouslySetInnerHTML={{ __html: "@media print{@page{size:A4;margin:16mm 8mm 4mm 8mm}}" }} />
       {/* 상단 바 (인쇄 숨김) */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h1 className="text-xl font-bold tracking-tight">결산서 <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span></h1>

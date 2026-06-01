@@ -46,11 +46,13 @@ describe("결산서 이월(carryData)", () => {
     expect(next.I13).toBe(f.K13);  // 분석 전일누계 ← 오늘 당일누계
   });
 
-  it("보존값(위탁 분석중량·고정값)은 그대로 유지, 나머지는 비움", () => {
-    const prev: CellMap = { C19: 3516.43, K21: 99, B5: 200 };
+  it("보존값(위탁 분석중량·고정값·현분잔량)은 그대로 유지, 나머지는 비움", () => {
+    const prev: CellMap = { C19: 3516.43, K21: 99, hbjr18: 120.5, hbjr14: 33.2, B5: 200 };
     const next = carryData(prev);
-    expect(next.C19).toBe(3516.43); // 보존
-    expect(next.K21).toBe(99);      // 고정값 보존
+    expect(next.C19).toBe(3516.43);  // 보존
+    expect(next.K21).toBe(99);       // 고정값 보존
+    expect(next.hbjr18).toBe(120.5); // 현분잔량 18K 보존
+    expect(next.hbjr14).toBe(33.2);  // 현분잔량 14K 보존
     expect(next.B5).toBeUndefined(); // 일반 입력은 비워짐
   });
 });

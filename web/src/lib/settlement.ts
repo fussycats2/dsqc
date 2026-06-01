@@ -85,11 +85,12 @@ export const CARRY: [string, string][] = [
   ["I37", "K37"],
 ];
 
-// 이월해도 지우지 않고 유지(위탁 분석중량 행19·43 + 고정값)
+// 이월해도 지우지 않고 유지(위탁 분석중량 행19·43 + 고정값 + 현분잔량)
 export const PRESERVE: string[] = [
   ...colRange("CDEFGHIJKL", 19),
   ...colRange("CDEFGHIJKL", 43),
   "K21", "L21", "I45", "J45",
+  "hbjr18", "hbjr14", // 현분잔량(18K·14K) — 외주 분석 잔량, 다음날로 유지
 ];
 
 // 전일(prev) 데이터 → 다음날 시작 데이터 (나머지는 빈 칸)
