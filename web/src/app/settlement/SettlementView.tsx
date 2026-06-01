@@ -144,7 +144,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B21" }, ...range("C", 10).map((c) => ({ k: "in", a: `${c}21` } as C)), { k: "e", span: 1, b: true }],
     gap,
     [{ k: "h", t: "실재고" }, { k: "h", t: "장부재고" }, { k: "h", t: "차중량" }, { k: "e", span: 10 }],
-    [{ k: "calc", a: "A24", cls: "h-9" }, { k: "calc", a: "B24", cls: "h-9" }, { k: "calc", a: "C24", cls: "h-9" }, { k: "e", span: 10 }],
+    [{ k: "calc", a: "A24" }, { k: "calc", a: "B24" }, { k: "calc", a: "C24" }, { k: "e", span: 10 }],
   ];
 
   // ───────── K14 ─────────

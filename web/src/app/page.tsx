@@ -85,7 +85,7 @@ function ProcessCard({ title, accent, procs, agg }: { title: string; accent: str
       <table className="w-full flex-1 text-xs">
         <thead>
           <tr className="border-b border-slate-100 dark:border-neutral-800">
-            <th className="px-2 py-1.5 text-left font-medium text-slate-400 dark:text-neutral-500">공정</th>
+            <th className="px-2 py-1.5 text-center font-medium text-slate-400 dark:text-neutral-500">공정</th>
             <th className={thR}>입고</th>
             <th className={thR}>재고</th>
             <th className={thR}>출고</th>
@@ -101,7 +101,7 @@ function ProcessCard({ title, accent, procs, agg }: { title: string; accent: str
             const stock = round2(a.stock);
             return (
               <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-neutral-800/50">
-                <td className="px-2 py-1.5"><NameLink p={p} /></td>
+                <td className="px-2 py-1.5 text-center"><NameLink p={p} /></td>
                 <td className={tdR}>{fmtWeight(a.inW)}</td>
                 <td className={tdR}>
                   <span className={stock > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-400"}>{fmtWeight(stock)}</span>
@@ -117,7 +117,7 @@ function ProcessCard({ title, accent, procs, agg }: { title: string; accent: str
         </tbody>
         <tfoot>
           <tr className="border-t border-slate-200 bg-slate-50/60 font-semibold dark:border-neutral-700 dark:bg-neutral-800/40">
-            <td className="px-2 py-1.5">계</td>
+            <td className="px-2 py-1.5 text-center">계</td>
             <td className={tdR}>{fmtWeight(tIn)}</td>
             <td className={tdR}>{fmtWeight(tStock)}</td>
             <td className={tdR}>{fmtWeight(tOut)}</td>
@@ -142,7 +142,7 @@ function FlowCard({ title, accent, label, procs, agg }: { title: string; accent:
       <table className="w-full flex-1 text-xs">
         <thead>
           <tr className="border-b border-slate-100 dark:border-neutral-800">
-            <th className="px-2 py-1.5 text-left font-medium text-slate-400 dark:text-neutral-500">{label}</th>
+            <th className="px-2 py-1.5 text-center font-medium text-slate-400 dark:text-neutral-500">{label}</th>
             <th className={thR}>입고중량</th>
             <th className={thR}>출고중량</th>
           </tr>
@@ -154,7 +154,7 @@ function FlowCard({ title, accent, label, procs, agg }: { title: string; accent:
             const a = A(p.id);
             return (
               <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-neutral-800/50">
-                <td className="px-2 py-1.5"><NameLink p={p} /></td>
+                <td className="px-2 py-1.5 text-center"><NameLink p={p} /></td>
                 <td className={tdR}>{fmtWeight(a.inW)}</td>
                 <td className={tdR}>{fmtWeight(a.outW)}</td>
               </tr>
@@ -165,7 +165,7 @@ function FlowCard({ title, accent, label, procs, agg }: { title: string; accent:
         </tbody>
         <tfoot>
           <tr className="border-t border-slate-200 bg-slate-50/60 font-semibold dark:border-neutral-700 dark:bg-neutral-800/40">
-            <td className="px-2 py-1.5">계</td>
+            <td className="px-2 py-1.5 text-center">계</td>
             <td className={tdR}>{fmtWeight(tIn)}</td>
             <td className={tdR}>{fmtWeight(tOut)}</td>
           </tr>
