@@ -36,6 +36,36 @@ function computedValue(c: ColDef, lot: Lot): string {
 }
 const isNumKind = (k: string) => k === "weight" || k === "int";
 
+// 셀 폭에 맞춰 줄바꿈 없이 글자를 자동 축소 (autoFit 칸: 투입부서·이전파트·이관파트).
+//  natural(내용 폭) > avail(셀 폭)이면 transform:scale 로 가로 비율만큼 축소(최소 0.55배).
+//  scrollWidth/clientWidth 는 transform 영향을 안 받아 측정이 안정적 → 재귀 리사이즈 없음.
+function AutoFitText({ text, align }: { text: string; align: "left" | "center" }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const wrap = wrapRef.current, span = spanRef.current;
+    if (!wrap || !span) return;
+    const fit = () => {
+      const avail = wrap.clientWidth, natural = span.scrollWidth;
+      // avail>0 일 때만 축소(레이아웃 전 0폭 측정으로 인한 깜빡임 방지)
+      setScale(avail > 0 && natural > avail ? Math.max(0.55, avail / natural) : 1);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [text]);
+  return (
+    <div ref={wrapRef} className={`overflow-hidden ${align === "center" ? "text-center" : ""}`}>
+      <span ref={spanRef} className="inline-block whitespace-nowrap align-middle"
+        style={{ transformOrigin: align === "center" ? "center" : "left center", transform: `scale(${scale})` }}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
 // 목표 중량에 가장 근사한 조합(2개 이상) 찾기 — 작업중 weight(중량) 기준
 //  분기한정 DFS(오름차순 정렬 + 초과 가지치기 + 노드/크기 상한)로 상위 N개 반환
 type Combo = { ids: string[]; sum: number; diff: number };
@@ -162,7 +192,12 @@ function LotTable({
                     </td>
                     {columns.map((c, i) => {
                       const numeric = isNumKind(c.kind) || !!c.computed;
-                      const align = numeric ? "text-right tabular-nums" : c.key === "due_date" ? "text-center" : "";
+                      // 내역·수량·비고는 중앙 정렬(요청). 수량은 숫자라 tabular-nums 유지.
+                      const centered = c.key === "description" || c.key === "qty" || c.key === "note";
+                      const align = centered
+                        ? `text-center${c.key === "qty" ? " tabular-nums" : ""}`
+                        : numeric ? "text-right tabular-nums"
+                          : c.key === "due_date" ? "text-center" : "";
                       if (c.computed)
                         return (
                           <td key={i} className={`break-words px-1.5 py-1 text-slate-500 dark:text-neutral-400 ${align}`}>
@@ -180,12 +215,32 @@ function LotTable({
                             onClick={(e) => e.stopPropagation()}>
                             <button type="button" onClick={() => onTrace(r.id)}
                               title={`계보 추적${r.serial ? ` · ${r.serial}` : ""}`}
-                              className="inline-flex max-w-full items-center gap-0.5 truncate rounded text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-800 hover:decoration-solid dark:text-blue-400 dark:hover:text-blue-300">
+                              className="group/serial -mx-1 inline-flex max-w-full items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-200/60 dark:hover:bg-neutral-700/60">
                               {locked && <span className="shrink-0">🔒</span>}
-                              <span className="truncate">{fmtCell(r[c.key], c.kind) || "(번호없음)"}</span>
+                              <span className="min-w-0 truncate font-medium tabular-nums text-slate-700 transition-colors group-hover/serial:text-blue-600 dark:text-neutral-200 dark:group-hover/serial:text-blue-400">
+                                {fmtCell(r[c.key], c.kind) || "(번호없음)"}
+                              </span>
+                              {/* 계보(분기) 아이콘 — 평소엔 옅게, 호버 시 블루로 강조 */}
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                                strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                                className="h-3 w-3 shrink-0 text-slate-300 transition-colors group-hover/serial:text-blue-500 dark:text-neutral-600 dark:group-hover/serial:text-blue-400">
+                                <line x1="6" x2="6" y1="3" y2="15" />
+                                <circle cx="18" cy="6" r="3" />
+                                <circle cx="6" cy="18" r="3" />
+                                <path d="M18 9a9 9 0 0 1-9 9" />
+                              </svg>
                             </button>
                           </td>
                         );
+                      // autoFit 칸: 줄바꿈 없이 셀 폭에 맞춰 글자 자동 축소
+                      if (c.autoFit) {
+                        const text = fmtCell(r[c.key], c.kind);
+                        return (
+                          <td key={i} className={`px-1.5 py-1 ${align}`} title={text}>
+                            <AutoFitText text={text} align={centered ? "center" : "left"} />
+                          </td>
+                        );
+                      }
                       return (
                         <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
                           {fmtCell(r[c.key], c.kind)}
