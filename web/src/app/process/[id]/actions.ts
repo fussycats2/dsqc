@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { buildGroupedSerial } from "@/lib/serial";
 import { round2 } from "@/lib/types";
+import { getWorkDate } from "@/lib/workDate";
 
 // ────────────────────────────────────────────────────────────────────────
 //  공정 흐름 액션 — docs/05_정밀스펙.md §2 매핑 그대로 (엑셀 VBA 1:1)
@@ -78,6 +79,7 @@ export async function sendRows(
   const valid = rows.filter((r) => r.description?.trim() || r.qty || r.weight || r.tag);
   if (valid.length === 0) return { error: "입력된 행이 없습니다." };
 
+  const wd = await getWorkDate(); // 새 입력은 현재 작업일에 귀속
   let sent = 0;
   for (const r of valid) {
     const { data: serial, error: serr } = await supabase.rpc("next_serial", {
@@ -98,6 +100,7 @@ export async function sendRows(
       due_date: toStr(r.due_date),
       raw_weight: toNum(r.raw_weight),
       note: toStr(r.note),
+      work_date: wd,
     });
     if (error) return { error: error.message };
     sent++;
@@ -140,6 +143,7 @@ export async function completeLots(
       q: sumOf(lots, "q"),
       raw_weight: sumOf(lots, "raw_weight"),
       due_date: joinDue(lots),
+      work_date: lots[0]?.work_date, // 집계 결과는 원본 작업일 승계
     })
     .select("id")
     .single();
@@ -190,6 +194,7 @@ export async function feedToWork(
         due_date: l.due_date,
         raw_weight: l.raw_weight,
         note: l.note,
+        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
       })
       .select("id")
       .single();
@@ -238,6 +243,7 @@ export async function feedToOtherDept(
         due_date: l.due_date,
         raw_weight: l.raw_weight,
         note: l.note,
+        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
       })
       .select("id")
       .single();
@@ -286,6 +292,7 @@ export async function relayToWork(
         due_date: l.due_date,
         raw_weight: l.raw_weight,
         note: l.note,
+        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
       })
       .select("id")
       .single();
@@ -335,6 +342,7 @@ export async function shipToIo(
         due_date: l.due_date,
         raw_weight: l.raw_weight,
         note: l.note,
+        work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
       })
       .select("id")
       .single();
@@ -387,6 +395,7 @@ export async function splitLotCustom(
       weight: parts[i].weight,
       due_date: L.due_date,
       note: L.note,
+      work_date: L.work_date, // 분할도 원본 작업일 승계
     });
   }
   // 원본 삭제 (자식 lot_links는 원본 참조 안 함)

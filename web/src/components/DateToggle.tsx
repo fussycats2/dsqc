@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const KEY = "dsqc.workDate";
 
@@ -16,19 +17,26 @@ function shift(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// 작업 날짜 토글 (◀ 날짜 ▶ · 오늘). 선택값은 localStorage에 보존.
+function readCookie(): string | null {
+  const m = document.cookie.match(/(?:^|; )dsqc\.workDate=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// 작업 날짜 토글 (◀ 날짜 ▶ · 오늘). 쿠키에 저장 → 서버가 그 날짜 데이터로 필터.
 export function DateToggle() {
+  const router = useRouter();
   const [date, setDate] = useState<string>(todayKST());
 
   useEffect(() => {
-    const saved = localStorage.getItem(KEY);
+    const saved = readCookie();
     if (saved) setDate(saved);
   }, []);
 
   const change = (v: string) => {
     setDate(v);
-    localStorage.setItem(KEY, v);
-    window.dispatchEvent(new CustomEvent("dsqc:workDate", { detail: v }));
+    // 1년 보존 쿠키 + 서버 컴포넌트 재실행(작업일 필터 반영)
+    document.cookie = `${KEY}=${v}; path=/; max-age=31536000`;
+    router.refresh();
   };
 
   const isToday = date === todayKST();

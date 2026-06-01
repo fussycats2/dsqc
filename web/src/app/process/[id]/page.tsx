@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { COLUMNS, type Lot, type Process } from "@/lib/types";
+import { getWorkDate } from "@/lib/workDate";
 import { EntryGrid } from "./EntryGrid";
 import { ProcessView } from "./ProcessView";
 
@@ -36,13 +37,11 @@ export default async function ProcessPage({
     );
   }
 
-  const [{ data: lotData }, { data: closedData }] = await Promise.all([
-    supabase.from("lots").select("*").eq("process_id", id).order("created_at"),
-    supabase.from("periods").select("id").eq("status", "closed"),
-  ]);
-  // 마감(closed period)된 lot은 활성 화면에서 숨김. period 없거나 열린 것만 표시
-  const closed = new Set((closedData ?? []).map((p) => p.id));
-  const lots = ((lotData ?? []) as Lot[]).filter((l) => !l.period_id || !closed.has(l.period_id));
+  // 선택한 작업일(쿠키)의 데이터만 표시 — 날짜별 조회·수정
+  const workDate = await getWorkDate();
+  const { data: lotData } = await supabase
+    .from("lots").select("*").eq("process_id", id).eq("work_date", workDate).order("created_at");
+  const lots = (lotData ?? []) as Lot[];
   const inRows = lots.filter((l) => l.side === "in");
   const outRows = lots.filter((l) => l.side === "out");
 

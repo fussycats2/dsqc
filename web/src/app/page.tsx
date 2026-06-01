@@ -2,7 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { envMissing } from "@/lib/getProcesses";
 import { fmtWeight, round2, type Process } from "@/lib/types";
-import { DayClose, type CloseHistory } from "./DayClose";
+import { getWorkDate } from "@/lib/workDate";
+import { DayClose } from "./DayClose";
 
 type Karat = "18K" | "14K";
 
@@ -202,30 +203,21 @@ export default async function Home() {
   }
 
   const supabase = await createClient();
-  const [{ data: lotData }, { data: procData }, { data: periodData }] = await Promise.all([
-    supabase.from("lots").select("process_id, side, weight, weight_before, locked, period_id"),
+  const workDate = await getWorkDate();
+  const [{ data: lotData }, { data: procData }] = await Promise.all([
+    supabase.from("lots").select("process_id, side, weight, weight_before, locked").eq("work_date", workDate),
     supabase.from("processes").select("*").order("sort_order"),
-    supabase.from("periods").select("id, label, kind, status, closed_at, snapshot").eq("kind", "day").order("closed_at", { ascending: false, nullsFirst: false }),
   ]);
 
-  // 마감(closed) period 분리: 닫힌 것은 집계에서 제외(활성만), 열린 것은 이월 현황
-  const periods = (periodData ?? []) as { id: string; label: string; status: string; closed_at: string | null; snapshot: CloseHistory["snapshot"] }[];
-  const closedSet = new Set(periods.filter((p) => p.status === "closed").map((p) => p.id));
-  const openCarry = periods.find((p) => p.status === "open") ?? null;
-  const history: CloseHistory[] = periods
-    .filter((p) => p.status === "closed").slice(0, 14)
-    .map((p) => ({ id: p.id, label: p.label, closed_at: p.closed_at, snapshot: p.snapshot }));
-
-  // lots → 공정별 집계 (마감된 lot 제외)
+  // lots → 공정별 집계 (선택 작업일)
   const agg = new Map<string, Agg>();
   const getA = (id: string) => {
     let a = agg.get(id);
     if (!a) { a = { inW: 0, outW: 0, stock: 0, lossW: 0, outUnlocked: 0 }; agg.set(id, a); }
     return a;
   };
-  for (const l of (lotData ?? []) as { process_id: string; side: string; weight: number | null; weight_before: number | null; locked: boolean; period_id: string | null }[]) {
+  for (const l of (lotData ?? []) as { process_id: string; side: string; weight: number | null; weight_before: number | null; locked: boolean }[]) {
     if (!l.process_id) continue;
-    if (l.period_id && closedSet.has(l.period_id)) continue; // 마감 lot 제외
     const a = getA(l.process_id);
     const w = Number(l.weight) || 0;
     if (l.side === "in") {
@@ -255,39 +247,39 @@ export default async function Home() {
 
   return (
     <main className="space-y-5 p-6">
-      {/* 상단 제목 — 다른 화면처럼 전역 헤더(49px) 아래 sticky 고정 */}
-      <div className="sticky top-[49px] z-10 -mx-6 -mt-6 border-b border-slate-100 bg-white/85 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/85">
+      {/* 상단 제목 */}
+      <div>
         <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
         <p className="text-xs text-slate-400 dark:text-neutral-500">파트별 현황 — 이름을 누르면 해당 시트로 이동</p>
       </div>
 
-      {/* 일마감 */}
-      <DayClose carryDate={openCarry?.label ?? null} history={history} />
+      {/* 일마감 + 날짜 변경 (스티키 아님) */}
+      <DayClose workDate={workDate} />
 
-      {/* KPI 요약 */}
-      <div className="flex flex-wrap gap-3">
-        <Kpi label="18K 재고" accent="bg-rose-500" value={fmtWeight(sumStock(work("18K")))} sub="공정 작업중 미집계" />
-        <Kpi label="14K 재고" accent="bg-blue-500" value={fmtWeight(sumStock(work("14K")))} sub="공정 작업중 미집계" />
-        <Kpi label="작업완료 후 미출고" accent={pendingTotal ? "bg-amber-500" : "bg-slate-300 dark:bg-neutral-600"}
-          value={`${pendingTotal}건`} sub={pendingTotal ? "아래 상세 참고" : "없음"} />
-      </div>
-
-      {/* 작업완료 후 미출고 상세 */}
-      {pendingTotal > 0 && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
-            ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {pending.map(({ p, cnt }) => (
-              <Link key={p.id} href={`/process/${p.id}`}
-                className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800">
-                {p.name} <b className="tabular-nums">{cnt}</b>건
-              </Link>
-            ))}
-          </div>
+      {/* KPI(18K 재고 라인) + 미출고 알림 — 전역 헤더(49px) 아래 sticky 고정 */}
+      <div className="sticky top-[49px] z-10 -mx-6 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+        <div className="flex flex-wrap gap-3">
+          <Kpi label="18K 재고" accent="bg-rose-500" value={fmtWeight(sumStock(work("18K")))} sub="공정 작업중 미집계" />
+          <Kpi label="14K 재고" accent="bg-blue-500" value={fmtWeight(sumStock(work("14K")))} sub="공정 작업중 미집계" />
+          <Kpi label="작업완료 후 미출고" accent={pendingTotal ? "bg-amber-500" : "bg-slate-300 dark:bg-neutral-600"}
+            value={`${pendingTotal}건`} sub={pendingTotal ? "아래 알림 참고" : "없음"} />
         </div>
-      )}
+        {pendingTotal > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+              ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {pending.map(({ p, cnt }) => (
+                <Link key={p.id} href={`/process/${p.id}`}
+                  className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800">
+                  {p.name} <b className="tabular-nums">{cnt}</b>건
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <Section title="공정 (연마·뻥·빠우)">
         <ProcessCard title="18K 공정" accent="bg-rose-500" procs={work("18K")} agg={agg} />

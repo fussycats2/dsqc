@@ -38,6 +38,7 @@ export interface Lot {
   moved_to_name: string | null; // 투입부서(io입고 K) / 이관파트(work완료 Z)
   status: "대기" | "작업중" | "완료";
   locked: boolean;
+  work_date: string | null;     // 작업일(YYYY-MM-DD) — 날짜별 관리/조회/마감
   period_id: string | null;
   created_at: string;
   completed_at: string | null;

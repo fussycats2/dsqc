@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Process } from "@/lib/types";
 
@@ -67,6 +66,9 @@ function Seg({
 
 export function TabBar({ processes }: { processes: Process[] }) {
   const pathname = usePathname();
+  const router = useRouter();
+  // <a href> 대신 클릭 이동 → 호버 시 브라우저 상태바에 URL(경로) 노출 안 됨
+  const go = (href: string) => router.push(href);
   const entry = processes.find((p) => p.schema_type === "entry");
   const activeProcess = processes.find((p) => pathname === `/process/${p.id}`);
 
@@ -112,9 +114,9 @@ export function TabBar({ processes }: { processes: Process[] }) {
   return (
     <nav className="sticky bottom-0 z-20 border-t border-gray-300 bg-gray-200 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] print:hidden dark:border-neutral-700 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-300 px-2 py-1 dark:border-neutral-700">
-        <Link href="/" className={pill(pathname === "/")}>🏠 대시보드</Link>
+        <button type="button" onClick={() => go("/")} className={pill(pathname === "/")}>🏠 대시보드</button>
         {entry && (
-          <Link href={`/process/${entry.id}`} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</Link>
+          <button type="button" onClick={() => go(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</button>
         )}
         <span className="text-gray-300 dark:text-neutral-600">|</span>
         <Seg items={[{ key: "18K", label: "18K" }, { key: "14K", label: "14K" }]} value={karat} onChange={(k) => setKarat(k as Karat)} activeBg={accentBg} />
@@ -148,9 +150,10 @@ export function TabBar({ processes }: { processes: Process[] }) {
           tabs.map((p) => {
             const active = pathname === `/process/${p.id}`;
             return (
-              <Link
+              <button
+                type="button"
                 key={p.id}
-                href={`/process/${p.id}`}
+                onClick={() => go(`/process/${p.id}`)}
                 className={`${tabBase} ${
                   active
                     ? `${accentBg} border-t-white/80 font-bold text-white`
@@ -162,7 +165,7 @@ export function TabBar({ processes }: { processes: Process[] }) {
                 }`}
               >
                 {p.name}
-              </Link>
+              </button>
             );
           })
         )}
