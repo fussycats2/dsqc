@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { envMissing } from "@/lib/getProcesses";
 import { fmtWeight, round2, type Process } from "@/lib/types";
+import { DayClose, type CloseHistory } from "./DayClose";
 
 type Karat = "18K" | "14K";
 
@@ -201,20 +202,30 @@ export default async function Home() {
   }
 
   const supabase = await createClient();
-  const [{ data: lotData }, { data: procData }] = await Promise.all([
-    supabase.from("lots").select("process_id, side, weight, weight_before, locked"),
+  const [{ data: lotData }, { data: procData }, { data: periodData }] = await Promise.all([
+    supabase.from("lots").select("process_id, side, weight, weight_before, locked, period_id"),
     supabase.from("processes").select("*").order("sort_order"),
+    supabase.from("periods").select("id, label, kind, status, closed_at, snapshot").eq("kind", "day").order("closed_at", { ascending: false, nullsFirst: false }),
   ]);
 
-  // lots → 공정별 집계
+  // 마감(closed) period 분리: 닫힌 것은 집계에서 제외(활성만), 열린 것은 이월 현황
+  const periods = (periodData ?? []) as { id: string; label: string; status: string; closed_at: string | null; snapshot: CloseHistory["snapshot"] }[];
+  const closedSet = new Set(periods.filter((p) => p.status === "closed").map((p) => p.id));
+  const openCarry = periods.find((p) => p.status === "open") ?? null;
+  const history: CloseHistory[] = periods
+    .filter((p) => p.status === "closed").slice(0, 14)
+    .map((p) => ({ id: p.id, label: p.label, closed_at: p.closed_at, snapshot: p.snapshot }));
+
+  // lots → 공정별 집계 (마감된 lot 제외)
   const agg = new Map<string, Agg>();
   const getA = (id: string) => {
     let a = agg.get(id);
     if (!a) { a = { inW: 0, outW: 0, stock: 0, lossW: 0, outUnlocked: 0 }; agg.set(id, a); }
     return a;
   };
-  for (const l of (lotData ?? []) as { process_id: string; side: string; weight: number | null; weight_before: number | null; locked: boolean }[]) {
+  for (const l of (lotData ?? []) as { process_id: string; side: string; weight: number | null; weight_before: number | null; locked: boolean; period_id: string | null }[]) {
     if (!l.process_id) continue;
+    if (l.period_id && closedSet.has(l.period_id)) continue; // 마감 lot 제외
     const a = getA(l.process_id);
     const w = Number(l.weight) || 0;
     if (l.side === "in") {
@@ -244,10 +255,14 @@ export default async function Home() {
 
   return (
     <main className="space-y-5 p-6">
-      <div>
+      {/* 상단 제목 — 다른 화면처럼 전역 헤더(49px) 아래 sticky 고정 */}
+      <div className="sticky top-[49px] z-10 -mx-6 -mt-6 border-b border-slate-100 bg-white/85 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/85">
         <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
         <p className="text-xs text-slate-400 dark:text-neutral-500">파트별 현황 — 이름을 누르면 해당 시트로 이동</p>
       </div>
+
+      {/* 일마감 */}
+      <DayClose carryDate={openCarry?.label ?? null} history={history} />
 
       {/* KPI 요약 */}
       <div className="flex flex-wrap gap-3">
