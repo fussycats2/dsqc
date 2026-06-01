@@ -54,6 +54,37 @@ export interface ColDef {
   computed?: "loss" | "lossRate" | "ship";     // 자동 계산 표시 칸(표·모달 미리보기)
 }
 
+// ───────── 계보 추적 (lot_links 그래프) ─────────
+// 일련번호 클릭 → 한 행이 거쳐온/거쳐갈 전 공정 경로(이동·집계·분할)
+export type LotRelation = "move" | "merge" | "split";
+export interface TraceNode {
+  id: string;
+  serial: string | null;
+  side: "in" | "out";
+  description: string | null;
+  qty: number | null;
+  weight: number | null;
+  weight_before: number | null;
+  created_at: string;
+  moved_at: string | null;
+  locked: boolean;
+  process_id: string;
+  process_name: string;
+  karat: "18K" | "14K" | null;
+  schema_type: SchemaType;
+}
+export interface TraceEdge { from: string; to: string; relation: LotRelation; }
+export interface TraceResult { nodes: TraceNode[]; edges: TraceEdge[]; rootId: string; }
+
+// 노드 단계 라벨(공정=작업중/완료, 부서·검수=입고/출고)
+export function stageLabel(schemaType: SchemaType, side: "in" | "out"): string {
+  if (schemaType === "work") return side === "in" ? "작업중" : "완료";
+  return side === "in" ? "입고" : "출고";
+}
+export const RELATION_LABEL: Record<LotRelation, string> = {
+  move: "이동", merge: "집계", split: "분할",
+};
+
 // ───────── io 계열 (일반공정 + 검수) ─────────
 // 입고블록 A:K, 출고블록 L:Y
 // 공통 항목 폭(좌/우 동일): 내역 축소, 수량·Tag·Q·납기·원중량·비고는 살짝 키움

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { buildGroupedSerial } from "@/lib/serial";
-import { round2 } from "@/lib/types";
+import { round2, type TraceNode, type TraceEdge, type TraceResult, type LotRelation } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 
 // ────────────────────────────────────────────────────────────────────────
@@ -468,6 +468,68 @@ export async function unlockLots(processId: string, lotIds: string[]) {
   if (error) return { error: error.message };
   revalidatePath(`/process/${processId}`);
   return { ok: true, unlocked: lotIds.length };
+}
+
+// ───────── 계보 추적: 한 행이 거쳐온/거쳐갈 전 공정 경로 ─────────
+//  lot_links(move/merge/split)를 양방향 BFS로 따라가 연결된 모든 lot + 관계를 수집.
+//  · 분할(splitLotCustom)은 원본을 삭제하므로 그 지점에서 계보가 끊김(현재 사양).
+export async function traceLot(lotId: string): Promise<{ error?: string } & Partial<TraceResult>> {
+  if (!lotId) return { error: "행이 지정되지 않았습니다." };
+  const supabase = await createClient();
+
+  const visited = new Set<string>([lotId]);
+  const edgeMap = new Map<string, TraceEdge>();
+  let frontier = [lotId];
+  let guard = 0;
+  while (frontier.length && guard++ < 100) {
+    const [fwd, bwd] = await Promise.all([
+      supabase.from("lot_links").select("from_lot, to_lot, relation").in("from_lot", frontier),
+      supabase.from("lot_links").select("from_lot, to_lot, relation").in("to_lot", frontier),
+    ]);
+    if (fwd.error) return { error: fwd.error.message };
+    if (bwd.error) return { error: bwd.error.message };
+    const next: string[] = [];
+    for (const lk of [...(fwd.data ?? []), ...(bwd.data ?? [])]) {
+      const from = lk.from_lot as string, to = lk.to_lot as string;
+      const key = `${from}->${to}`;
+      if (!edgeMap.has(key)) edgeMap.set(key, { from, to, relation: lk.relation as LotRelation });
+      for (const id of [from, to]) if (!visited.has(id)) { visited.add(id); next.push(id); }
+    }
+    frontier = next;
+  }
+
+  const { data: lotData, error } = await supabase
+    .from("lots")
+    .select("id, serial, side, description, qty, weight, weight_before, created_at, moved_at, locked, process_id")
+    .in("id", [...visited]);
+  if (error) return { error: error.message };
+
+  const procIds = [...new Set((lotData ?? []).map((l) => l.process_id as string))];
+  const { data: procData } = await supabase
+    .from("processes").select("id, name, karat, schema_type").in("id", procIds);
+  const procMap = new Map((procData ?? []).map((p) => [p.id as string, p]));
+
+  const nodes: TraceNode[] = (lotData ?? []).map((l) => {
+    const p = procMap.get(l.process_id as string);
+    return {
+      id: l.id as string,
+      serial: l.serial as string | null,
+      side: l.side as "in" | "out",
+      description: l.description as string | null,
+      qty: l.qty as number | null,
+      weight: l.weight as number | null,
+      weight_before: l.weight_before as number | null,
+      created_at: l.created_at as string,
+      moved_at: l.moved_at as string | null,
+      locked: l.locked as boolean,
+      process_id: l.process_id as string,
+      process_name: (p?.name as string | undefined) ?? "(알 수 없음)",
+      karat: (p?.karat as "18K" | "14K" | null) ?? null,
+      schema_type: (p?.schema_type as TraceNode["schema_type"]) ?? "io",
+    };
+  });
+
+  return { nodes, edges: [...edgeMap.values()], rootId: lotId };
 }
 
 // ───────── 삭제 ─────────

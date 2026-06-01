@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { ColDef, Lot, Process } from "@/lib/types";
-import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight } from "@/lib/types";
+import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
+import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
 import { NumberInput } from "@/components/NumberInput";
 import { focusNextInput } from "@/lib/enterNav";
 import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
-  splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm,
+  splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm, traceLot,
 } from "./actions";
 
 type ActionResult = { error?: string } & Record<string, unknown>;
@@ -82,7 +82,7 @@ const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", 
 
 // ───────── 한 블록 테이블 카드 (표시 전용 — 수정은 모달에서만) ─────────
 function LotTable({
-  title, accent, columns, rows, selected, onToggle, onToggleAll, headTop,
+  title, accent, columns, rows, selected, onToggle, onToggleAll, onTrace, headTop,
 }: {
   title: string;
   accent: string;
@@ -91,6 +91,7 @@ function LotTable({
   selected: Set<string>;
   onToggle: (id: string, on: boolean) => void;
   onToggleAll: (on: boolean) => void;
+  onTrace: (id: string) => void;   // 일련번호 클릭 → 계보 추적
   headTop: number;        // 표 헤더 sticky top(px) = 전역헤더+툴바 높이
 }) {
   const weightSum = rows.reduce((a, r) => a + (Number(r.weight) || 0), 0);
@@ -172,9 +173,21 @@ function LotTable({
                       const locked = isSerial && r.locked;
                       // 일련번호는 줄바꿈 없이 길면 …처리(호버 title로 전체 표시), 나머지는 줄바꿈 허용
                       const cellCls = isSerial ? "truncate" : "break-words";
+                      // 일련번호 셀: 클릭=계보 추적(행 체크박스 토글과 분리 → 전파 중단)
+                      if (isSerial)
+                        return (
+                          <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`}
+                            onClick={(e) => e.stopPropagation()}>
+                            <button type="button" onClick={() => onTrace(r.id)}
+                              title={`계보 추적${r.serial ? ` · ${r.serial}` : ""}`}
+                              className="inline-flex max-w-full items-center gap-0.5 truncate rounded text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-800 hover:decoration-solid dark:text-blue-400 dark:hover:text-blue-300">
+                              {locked && <span className="shrink-0">🔒</span>}
+                              <span className="truncate">{fmtCell(r[c.key], c.kind) || "(번호없음)"}</span>
+                            </button>
+                          </td>
+                        );
                       return (
                         <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
-                          {locked && <span className="mr-1">🔒</span>}
                           {fmtCell(r[c.key], c.kind)}
                         </td>
                       );
@@ -488,6 +501,104 @@ function TagAdjustModal({
   );
 }
 
+// ───────── 계보 추적 모달 (일련번호 클릭) — 거쳐온/거쳐갈 공정 흐름 ─────────
+//  lot_links 그래프를 시간순 세로 타임라인으로 표시. 클릭한 행은 강조.
+function fmtStamp(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const mm = d.getMonth() + 1, dd = d.getDate();
+  const hh = String(d.getHours()).padStart(2, "0"), mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${mi}`;
+}
+function GenealogyModal({
+  trace, loading, onClose,
+}: {
+  trace: TraceResult | null; loading: boolean; onClose: () => void;
+}) {
+  // 시간순 정렬 → 흐름이 위→아래로 진행
+  const nodes = useMemo(
+    () => (trace ? [...trace.nodes].sort((a, b) => a.created_at.localeCompare(b.created_at)) : []),
+    [trace]);
+  // 노드별 들어오는 관계(부모) — 연결선 라벨용
+  const incoming = useMemo(() => {
+    const m = new Map<string, TraceEdge[]>();
+    for (const e of trace?.edges ?? []) {
+      const arr = m.get(e.to) ?? []; arr.push(e); m.set(e.to, arr);
+    }
+    return m;
+  }, [trace]);
+  const rootSerial = trace ? nodes.find((n) => n.id === trace.rootId)?.serial : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-bold">🧬 계보 추적
+            {rootSerial && <span className="ml-1 font-normal text-slate-400">· {rootSerial}</span>}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+
+        {loading ? (
+          <p className="py-10 text-center text-sm text-slate-400">불러오는 중…</p>
+        ) : nodes.length <= 1 ? (
+          <p className="py-10 text-center text-sm text-slate-400">
+            연결된 이전·이후 공정 기록이 없습니다.<br />
+            <span className="text-xs">(보내기·집계·이동 시 계보가 기록됩니다. 나누기한 행은 계보가 끊깁니다.)</span>
+          </p>
+        ) : (
+          <ol className="relative space-y-0">
+            {nodes.map((n, i) => {
+              const isRoot = trace && n.id === trace.rootId;
+              const parents = incoming.get(n.id) ?? [];
+              // 들어오는 관계 라벨: 집계는 건수까지, 그 외 첫 관계명
+              const mergeCount = parents.filter((p) => p.relation === "merge").length;
+              const relLabel = i === 0 || parents.length === 0 ? null
+                : mergeCount > 0 ? `${RELATION_LABEL.merge} · ${mergeCount}건`
+                  : RELATION_LABEL[parents[0].relation];
+              const is14 = n.karat === "14K";
+              return (
+                <li key={n.id}>
+                  {relLabel && (
+                    <div className="ml-4 flex items-center gap-1.5 py-1 text-[11px] text-slate-400">
+                      <span className="h-4 w-px bg-slate-200 dark:bg-neutral-700" />
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-neutral-800">↓ {relLabel}</span>
+                    </div>
+                  )}
+                  <div className={`rounded-xl border p-3 ${
+                    isRoot
+                      ? "border-blue-400 bg-blue-50/70 ring-1 ring-blue-300 dark:border-blue-700 dark:bg-blue-950/40"
+                      : "border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-semibold ${is14 ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                        {n.process_name}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+                        {stageLabel(n.schema_type, n.side)}
+                      </span>
+                      {n.locked && <span className="text-[10px]">🔒</span>}
+                      {isRoot && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white">선택한 행</span>}
+                      <span className="ml-auto text-[10px] tabular-nums text-slate-400">{fmtStamp(n.moved_at ?? n.created_at)}</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                      <span className="font-medium tabular-nums">{n.serial ?? "(번호없음)"}</span>
+                      {n.description && <span className="text-slate-500 dark:text-neutral-400">{n.description}</span>}
+                      <span className="text-slate-400">수량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtInt(n.qty) || "-"}</b></span>
+                      <span className="text-slate-400">중량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtWeight(n.weight) || "-"}</b></span>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ───────── 버튼 ─────────
 function Btn({
   children, onClick, disabled, tone = "default",
@@ -546,6 +657,9 @@ export function ProcessView({
   const [splitRowId, setSplitRowId] = useState<string | null>(null);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [tagAdjustOpen, setTagAdjustOpen] = useState(false);
+  const [trace, setTrace] = useState<TraceResult | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceLoading, setTraceLoading] = useState(false);
   const [pending, start] = useTransition();
 
   // 토스트 + 확인 토스트
@@ -619,6 +733,19 @@ export function ProcessView({
       else { notify("ok", ok(res)); clearSel(); }
     });
   const askConfirm = (text: string, onYes: () => void) => setConfirmBox({ text, onYes });
+
+  // 일련번호 클릭 → 계보 추적 (행 선택과 무관, 모달 즉시 오픈 후 비동기 로드)
+  const openTrace = (lotId: string) => {
+    setTrace(null);
+    setTraceLoading(true);
+    setTraceOpen(true);
+    (async () => {
+      const res = await traceLot(lotId);
+      setTraceLoading(false);
+      if (res?.error) { setTraceOpen(false); notify("err", res.error); return; }
+      setTrace(res as TraceResult);
+    })();
+  };
 
   const inIds = [...selIn], outIds = [...selOut];
   const nIn = inIds.length, nOut = outIds.length;
@@ -835,17 +962,23 @@ export function ProcessView({
       <div className="flex flex-col gap-3 2xl:flex-row">
         <LotTable title={isWork ? "작업중" : "입고"} accent="bg-emerald-500"
           columns={cols.in} rows={inRows} selected={selIn} headTop={headTop}
-          onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)} />
+          onToggle={toggle("in")} onToggleAll={toggleAll("in", inRows)} onTrace={openTrace} />
         <LotTable title={isWork ? "완료" : "출고"} accent="bg-rose-500"
           columns={cols.out} rows={outRows} selected={selOut} headTop={headTop}
-          onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)} />
+          onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)} onTrace={openTrace} />
       </div>
 
       <p className="text-[11px] text-slate-400 print:hidden">
-        ※ 좌·우는 동시 선택 불가(흐름 로직이 다름). 일련번호는 이동해도 유지(집계·분할 시에만 형태 변경).
+        ※ 행을 누르면 선택(체크), <b className="text-blue-500">일련번호</b>를 누르면 계보(거쳐온 공정)를 볼 수 있습니다.
+        좌·우는 동시 선택 불가(흐름 로직이 다름). 일련번호는 이동해도 유지(집계·분할 시에만 형태 변경).
         처리행은 🔒 잠금 — 맨 오른쪽 버튼으로 해제·삭제. 표는 보기 전용 — 수정은 ✏️ 행 수정·Tag 보정 모달에서만.
         작업후=집계 모달 입력, 실중량=이전 파트 이월, Tag중량/로스/출고중량=자동 계산.
       </p>
+
+      {/* 계보 추적 모달 (일련번호 클릭) */}
+      {traceOpen && (
+        <GenealogyModal trace={trace} loading={traceLoading} onClose={() => setTraceOpen(false)} />
+      )}
 
       {/* 토스트 (화면 정중앙, 크게) */}
       {toast && (
