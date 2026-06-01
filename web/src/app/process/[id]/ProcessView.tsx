@@ -234,9 +234,9 @@ function EditPanel({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-[1100px] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="relative mb-3 flex items-center justify-center">
           <h3 className="text-base font-bold">✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></h3>
-          <div className="flex gap-2">
+          <div className="absolute right-0 flex gap-2">
             <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs dark:border-neutral-600">취소</button>
             <button onClick={save} disabled={pending}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">저장</button>

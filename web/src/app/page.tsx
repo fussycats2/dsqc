@@ -268,7 +268,7 @@ export default async function Home() {
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
               ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
             </div>
-            <div className="ml-auto flex flex-wrap justify-end gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {pending.map(({ p, cnt }) => (
                 <Link key={p.id} href={`/process/${p.id}`}
                   className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800">
