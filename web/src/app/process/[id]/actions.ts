@@ -27,25 +27,6 @@ const toNum = (v: unknown) =>
 const toStr = (v: unknown) =>
   v === undefined || v === null || v === "" ? null : String(v);
 
-// 납기 간단 입력 파싱: "5-22","5/22","0522","5.22"→올해, "2026-05-22"→그대로. 실패 시 null
-const pad2 = (n: number) => String(n).padStart(2, "0");
-function parseDue(v?: string): string | null {
-  if (!v) return null;
-  const t = v.trim();
-  if (!t) return null;
-  let y: number, mo: number, d: number;
-  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
-  else {
-    y = new Date().getFullYear();
-    m = t.match(/^(\d{1,2})[-/.](\d{1,2})$/) || t.match(/^(\d{2})(\d{2})$/);
-    if (!m) return null;
-    mo = +m[1]; d = +m[2];
-  }
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return `${y}-${pad2(mo)}-${pad2(d)}`;
-}
-
 type LotRow = Record<string, unknown> & {
   id: string;
   process_id: string;
@@ -58,8 +39,9 @@ const sumOf = (rows: LotRow[], k: string) =>
   round2(rows.reduce((a, l) => a + N(l[k]), 0)) || null;
 const joinDesc = (rows: LotRow[]) =>
   [...new Set(rows.map((l) => l.description).filter(Boolean))].join(",") || null;
-const firstDue = (rows: LotRow[]) =>
-  (rows.find((l) => l.due_date)?.due_date as string | null) ?? null;
+// 납기는 자유 텍스트(현장에서 2개 입력 가능) → 내역처럼 중복 제거 후 콤마 결합해 전부 보존
+const joinDue = (rows: LotRow[]) =>
+  [...new Set(rows.map((l) => l.due_date).filter(Boolean))].join(",") || null;
 
 async function nameOf(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
   const { data } = await supabase.from("processes").select("name").eq("id", id).single();
@@ -113,7 +95,7 @@ export async function sendRows(
       weight: toNum(r.weight), // 중량
       tag: toNum(r.tag),
       q: toNum(r.q),
-      due_date: parseDue(r.due_date),
+      due_date: toStr(r.due_date),
       raw_weight: toNum(r.raw_weight),
       note: toStr(r.note),
     });
@@ -157,7 +139,7 @@ export async function completeLots(
       tag: sumOf(lots, "tag"),
       q: sumOf(lots, "q"),
       raw_weight: sumOf(lots, "raw_weight"),
-      due_date: firstDue(lots),
+      due_date: joinDue(lots),
     })
     .select("id")
     .single();

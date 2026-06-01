@@ -17,7 +17,6 @@ type Side = "in" | "out";
 // ───────── 표시 헬퍼 (모듈 스코프 = 안정, 입력 포커스 유지) ─────────
 function fmtCell(v: unknown, kind: string): string {
   if (v === null || v === undefined || v === "") return "";
-  if (kind === "date") return String(v).slice(5, 10);          // 납기: MM-DD (연도 제거)
   if (kind === "datetime") {                                   // 출고시간: 일 HH:MM (월 제거)
     const s = String(v);
     return `${s.slice(8, 10)} ${s.slice(11, 16)}`;
@@ -147,11 +146,13 @@ function LotTable({
                 const checked = selected.has(r.id);
                 return (
                   <tr key={r.id}
-                    className={`border-t border-slate-100 dark:border-neutral-800 ${
+                    onClick={() => onToggle(r.id, !checked)}
+                    className={`cursor-pointer border-t border-slate-100 dark:border-neutral-800 ${
                       checked ? "bg-blue-50/70 dark:bg-blue-950/40"
                         : ri % 2 ? "bg-slate-50/40 dark:bg-neutral-900/60" : ""
                     } ${r.locked ? "opacity-50" : "hover:bg-amber-50/60 dark:hover:bg-neutral-800/60"}`}>
-                    <td className="px-1 py-0.5 text-center">
+                    {/* 체크박스 칸은 네이티브 토글이 처리 → 행 onClick과 중복 방지 위해 전파 중단 */}
+                    <td className="px-1 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={checked}
                         onChange={(ev) => onToggle(r.id, ev.target.checked)} />
                     </td>
@@ -203,7 +204,6 @@ function EditPanel({
   for (const c of fields) {
     const v = row[c.key];
     init[c.key as string] = v == null ? ""
-      : c.kind === "date" ? String(v).slice(0, 10)
       : c.kind === "weight" && !isNaN(Number(v)) ? Number(v).toFixed(2) // 소수 2자리 일관 표시
       : String(v);
   }
@@ -249,7 +249,7 @@ function EditPanel({
               {isNumKind(c.kind) ? (
                 <NumberInput value={vals[key]} kind={c.kind as "int" | "weight"} onChange={(v) => set(key, v)} className={cls} />
               ) : (
-                <input value={vals[key]} type={c.kind === "date" ? "date" : "text"}
+                <input value={vals[key]} type="text"
                   onChange={(e) => set(key, e.target.value)} className={cls} />
               )}
             </label>

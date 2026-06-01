@@ -1,6 +1,6 @@
 // 엑셀 원본 열과 1:1 (docs/05_정밀스펙.md). io/work × in/out 4형.
 export type SchemaType = "io" | "work" | "entry";
-export type CellKind = "int" | "weight" | "date" | "datetime" | "text" | "status";
+export type CellKind = "int" | "weight" | "datetime" | "text" | "status";
 
 export interface Process {
   id: string;
@@ -64,7 +64,7 @@ const IO_IN: ColDef[] = [
   { key: "weight", label: "중량", kind: "weight", width: 64 },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
-  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "moved_at", label: "투입시간", kind: "datetime", width: 86 },
@@ -77,7 +77,7 @@ const IO_OUT: ColDef[] = [
   { key: "weight", label: "실중량", kind: "weight", width: 64 },   // 표=이전파트 이월(읽기), 모달=수정 가능
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
-  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 86 },
@@ -96,7 +96,7 @@ const WORK_IN: ColDef[] = [
   { key: "weight_in", label: "입중량", kind: "weight", width: 64 },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
-  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "weight", label: "중량", kind: "weight", width: 64 },
@@ -112,7 +112,7 @@ const WORK_OUT: ColDef[] = [
   { key: "weight", label: "로스율", kind: "weight", width: 58, computed: "lossRate" },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
-  { key: "due_date", label: "납기", kind: "date", width: 54 },
+  { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "moved_at", label: "이관/출고시간", kind: "datetime", width: 96 },
@@ -126,7 +126,7 @@ const ENTRY_IN: ColDef[] = [
   { key: "weight", label: "중량", kind: "weight", width: 64 },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
-  { key: "due_date", label: "납기", kind: "date", width: 76 },
+  { key: "due_date", label: "납기", kind: "text", width: 76 },
   { key: "raw_weight", label: "원중량(수리)", kind: "weight", width: 80 },
   { key: "note", label: "비고", kind: "text", width: 88 },
 ];

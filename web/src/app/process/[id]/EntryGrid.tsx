@@ -136,7 +136,7 @@ export function EntryGrid({
                         <NumberInput value={val} kind={c.kind} align="left" onChange={(v) => update(i, key, v)} className={cls} />
                       ) : (
                         <input value={val} type="text"
-                          placeholder={c.kind === "date" ? "월-일" : undefined}
+                          placeholder={key === "due_date" ? "납기" : undefined}
                           onChange={(e) => update(i, key, e.target.value)}
                           className={`${cls} text-left`} />
                       )}
