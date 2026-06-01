@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { fmtWeight } from "@/lib/types";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
-import { saveSettlement, carrySettlement, moveSettlement } from "./settlementActions";
+import { saveSettlement, carrySettlement, moveSettlement, pushFromLots } from "./settlementActions";
 
 const fmtD = (s?: string | null) => (s ? s.replaceAll("-", "/") : "");
 const nextDay = (d: string) => {
@@ -173,6 +173,12 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     const r = await saveSettlement(workDate, numMap);
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(workDate)} 결산서 저장됨`);
   });
+  const doPush = () => start(async () => {
+    const r = await pushFromLots(workDate, numMap);
+    if (r.error) { setMsg(`오류: ${r.error}`); return; }
+    if (r.data) setVals(toStr(r.data));
+    setMsg(`${fmtD(workDate)} 결산전송 완료 — 입고·출고·분석투입량 자동 반영`);
+  });
   const runCarry = (overwrite: boolean) => start(async () => {
     const r = await carrySettlement(src, carry, overwrite);
     if (r.needConfirm) {
@@ -213,6 +219,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h1 className="text-xl font-bold tracking-tight">결산서 <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span></h1>
         <div className="flex items-center gap-2">
+          <button onClick={doPush} disabled={pending} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">결산전송</button>
           <button onClick={doSave} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">저장</button>
           <button onClick={() => window.print()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">인쇄</button>
         </div>
