@@ -106,7 +106,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     if (c.k === "rh") return <td key={key} colSpan={c.span} className={`${rhCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "t") return <td key={key} colSpan={c.span} className={`${tCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "in") return <td key={key} className={`${bd} p-0`}>{inEl(c.a)}</td>;
-    return <td key={key} colSpan={c.span} className={`${calcCls} ${c.cls ?? ""}`}>{fmtCalc(f[c.a])}</td>;
+    return <td key={key} colSpan={c.span} className={`${calcCls} ${c.cls ?? ""}`}>{fmtCalc(f[c.a]) || " "}</td>;
   };
 
   // 공유 13열 그리드 — 모든 서브표가 같은 열에 정렬(엑셀과 동일)
