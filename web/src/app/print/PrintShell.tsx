@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-// 인쇄 뷰 공용 셸 — 상단 툴바(인쇄 숨김) + 본문(인쇄 영역)
+// 인쇄 뷰 공용 셸 — 상단 툴바(인쇄 숨김) + 본문(인쇄 영역, 페이지 폭으로 제한)
 export function PrintShell({
   title, workDate, groups, currentGroup, children,
 }: {
@@ -12,13 +12,13 @@ export function PrintShell({
   currentGroup?: string;
   children: React.ReactNode;
 }) {
+  const is14 = title.includes("14K");
   return (
     <main className="p-6 print:p-0">
       <style dangerouslySetInnerHTML={{ __html: "@media print{@page{size:A4 portrait;margin:10mm 8mm}}" }} />
       {/* 툴바 (인쇄 시 숨김) */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+      <div className="mx-auto mb-3 flex max-w-[880px] flex-wrap items-center gap-2 print:hidden">
         <Link href="/print" className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">← 인쇄 메뉴</Link>
-        <h1 className="text-lg font-bold">{title} <span className="text-sm font-normal text-slate-400">{workDate.replaceAll("-", "/")}</span></h1>
         {groups && (
           <div className="flex flex-wrap gap-1">
             {groups.map((g) => (
@@ -34,7 +34,15 @@ export function PrintShell({
           🖨 인쇄
         </button>
       </div>
-      <div className="text-slate-900 dark:text-white">{children}</div>
+
+      {/* 인쇄 영역 — A4 폭으로 제한·중앙정렬 (화면 프리뷰도 페이지처럼) */}
+      <div className="mx-auto max-w-[880px] text-slate-900 dark:text-white">
+        <div className="mb-2 flex items-baseline justify-between border-b-2 border-slate-600 pb-1">
+          <h1 className={`text-base font-bold ${is14 ? "text-blue-600" : ""}`}>{title}</h1>
+          <span className="text-[11px] text-slate-500">{workDate.replaceAll("-", "/")}</span>
+        </div>
+        {children}
+      </div>
     </main>
   );
 }

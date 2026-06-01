@@ -23,13 +23,23 @@ function cellText(r: Lot, c: ColDef): string {
 
 const isNum = (k: string) => k === "weight" || k === "int";
 
+// 열 합계 (숫자/계산열만) — 엑셀 인쇄 합계행 재현
+function colSum(rows: Lot[], c: ColDef): number | null {
+  if (c.computed === "lossRate") return null;
+  if (c.computed === "ship") return rows.reduce((a, r) => a + (shipWeight(r) ?? 0), 0);
+  if (c.computed === "loss") return rows.reduce((a, r) => a + (lossOf(r) ?? 0), 0);
+  if (c.kind === "weight" || c.kind === "int") return rows.reduce((a, r) => a + (Number(r[c.key]) || 0), 0);
+  return null;
+}
+
 // 공정 한 묶음 표
 function LedgerTable({ name, columns, rows }: { name: string; columns: ColDef[]; rows: Lot[] }) {
   const wSum = rows.reduce((a, r) => a + (Number(r.weight) || 0), 0);
+  const blue = name.includes("14K");
   return (
     <section className="mb-4" style={{ breakInside: "avoid" }}>
       <div className="flex items-baseline justify-between border-b border-slate-400 pb-0.5">
-        <h3 className="text-sm font-bold">{name}</h3>
+        <h3 className={`text-sm font-bold ${blue ? "text-blue-600" : ""}`}>{name}</h3>
         <span className="text-[11px] text-slate-500">{rows.length}건 · 중량 합 {fmtWeight(wSum)}</span>
       </div>
       <table className="w-full border-collapse text-[10px]">
@@ -55,6 +65,21 @@ function LedgerTable({ name, columns, rows }: { name: string; columns: ColDef[];
             </tr>
           ))}
         </tbody>
+        {rows.length > 0 && (
+          <tfoot>
+            <tr className="bg-slate-50 font-bold print:bg-slate-50">
+              <td className="border border-slate-300 px-1 py-0.5 text-center">계</td>
+              {columns.map((c, i) => {
+                const s = colSum(rows, c);
+                return (
+                  <td key={i} className={`border border-slate-300 px-1 py-0.5 ${isNum(c.kind) || c.computed ? "text-right tabular-nums" : ""}`}>
+                    {s == null ? "" : c.kind === "int" ? fmtInt(s) : fmtWeight(s)}
+                  </td>
+                );
+              })}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </section>
   );
@@ -113,7 +138,7 @@ export default async function PrintKindPage({
     <PrintShell title={title} workDate={workDate} groups={groups} currentGroup={kind === "stock" ? group : undefined}>
       {blocks.map((b, bi) => (
         <div key={bi} style={bi > 0 && paged ? { breakBefore: "page" } : undefined}>
-          {b.heading && <h2 className="mb-1 mt-2 text-base font-bold">{b.heading}</h2>}
+          {b.heading && <h2 className={`mb-1 mt-2 text-base font-bold ${b.heading.includes("14K") ? "text-blue-600" : ""}`}>{b.heading}</h2>}
           {b.names.map((n) => (
             <LedgerTable key={n} name={n} columns={columns} rows={rowsOf(idByName.get(n))} />
           ))}
