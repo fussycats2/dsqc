@@ -4,6 +4,7 @@ import { envMissing } from "@/lib/getProcesses";
 import { fmtWeight, round2, type Process } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 import { DayClose } from "./DayClose";
+import { Backup } from "./Backup";
 
 type Karat = "18K" | "14K";
 
@@ -403,7 +404,8 @@ export default async function Home() {
       <DayClose workDate={workDate} />
 
       {/* KPI(18K 재고 라인) + 미출고 알림 — 전역 헤더(49px) 아래 sticky 고정 */}
-      <div className="sticky top-[49px] z-10 -mx-6 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+      {/* -mt-3: 위 일마감 박스와의 간격을 다른 박스들처럼 ~20px로 좁힘(py-3 만큼 당김) */}
+      <div className="sticky top-[49px] z-10 -mx-6 -mt-3 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
         <div className="flex flex-wrap gap-3">
           <Kpi
             label="18K 재고"
@@ -488,6 +490,8 @@ export default async function Home() {
           agg={agg}
         />
       </Section>
+
+      <Backup workDate={workDate} />
 
       <p className="text-[11px] text-slate-400 dark:text-neutral-500">
         ※ 공정 오차 = 입고 − 재고 − 출고 − 로스 (정상이면 0,{" "}

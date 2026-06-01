@@ -56,7 +56,7 @@ async function saveSnapshot(
   else await supabase.from("periods").insert({ label: date, kind: "day", status: "closed", closed_at: now, snapshot });
 }
 
-export async function closeDay(sourceDate: string, carryDate: string, overwrite = false) {
+export async function closeDay(sourceDate: string, carryDate: string) {
   if (!sourceDate || !carryDate) return { error: "마감일과 이월 날짜를 선택하세요." };
   if (sourceDate === carryDate) return { error: "이월 날짜는 마감일과 달라야 합니다." };
   const supabase = await createClient();
@@ -82,12 +82,11 @@ export async function closeDay(sourceDate: string, carryDate: string, overwrite 
     return { ok: true, carried: 0, snapshotOnly: true, date: sourceDate };
   }
 
-  // 이월날짜에 이미 공정 미작업이 있으면 덮어쓰기 확인
+  // 이월날짜에 이미 공정 미작업이 있으면 덮어쓰지 않고 취소(데이터 이동·삭제 후 재시도 안내)
   const { data: existing } = await supabase
     .from("lots").select("id").eq("work_date", carryDate).eq("side", "in").eq("locked", false).in("process_id", workIds);
   if (existing && existing.length > 0) {
-    if (!overwrite) return { needConfirm: true, existing: existing.length, carryDate };
-    await supabase.from("lots").delete().in("id", existing.map((e) => e.id));
+    return { blocked: true, existing: existing.length, carryDate };
   }
 
   // 복사 이월(원래 날짜엔 그대로 남음)
@@ -110,22 +109,19 @@ export async function closeDay(sourceDate: string, carryDate: string, overwrite 
 // 한 작업일의 데이터 전체를 다른 날짜로 변경(이월일 재조정 + 스냅샷 날짜 변경 겸용)
 //  · 옮길 날짜(to)의 기존 데이터는 덮어씀(삭제 후 이동)
 //  · lots.work_date 일괄 변경 + 해당 day period(스냅샷) label도 변경
-export async function moveDate(fromDate: string, toDate: string, overwrite = false) {
+export async function moveDate(fromDate: string, toDate: string) {
   if (!fromDate || !toDate) return { error: "날짜를 선택하세요." };
   if (fromDate === toDate) return { error: "같은 날짜입니다." };
   const supabase = await createClient();
 
-  // 옮길 날짜에 기존 데이터가 있으면 한 번 더 확인(덮어쓰기 경고)
-  const { data: existing } = await supabase
+  // 옮길 날짜에 기존 데이터(또는 스냅샷)가 있으면 덮어쓰지 않고 취소
+  const { data: exLots } = await supabase
     .from("lots").select("id").eq("work_date", toDate);
-  if (existing && existing.length > 0 && !overwrite) {
-    return { needConfirm: true, existing: existing.length, toDate };
+  const { data: exPer } = await supabase
+    .from("periods").select("id").eq("kind", "day").eq("label", toDate).maybeSingle();
+  if ((exLots && exLots.length > 0) || exPer) {
+    return { blocked: true, existing: exLots?.length ?? 0, toDate };
   }
-
-  // 덮어쓰기: 옮길 날짜의 기존 lots·스냅샷 제거
-  const { error: delErr } = await supabase.from("lots").delete().eq("work_date", toDate);
-  if (delErr) return { error: "기존 데이터 삭제 실패: " + delErr.message };
-  await supabase.from("periods").delete().eq("kind", "day").eq("label", toDate);
 
   const { error, count } = await supabase
     .from("lots").update({ work_date: toDate }, { count: "exact" }).eq("work_date", fromDate);

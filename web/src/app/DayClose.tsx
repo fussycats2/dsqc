@@ -15,7 +15,7 @@ const inputCls = "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs 
 // 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지
 const lockedCls = "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
 
-type ConfirmBox = { title: string; lines: string[]; yesLabel: string; onYes: () => void };
+type ConfirmBox = { title: string; lines: string[]; yesLabel: string; onYes: () => void; infoOnly?: boolean };
 
 export function DayClose({ workDate }: { workDate: string }) {
   const [src, setSrc] = useState(workDate);
@@ -32,14 +32,19 @@ export function DayClose({ workDate }: { workDate: string }) {
     setFrom(workDate); setTo(nextDay(workDate));
   }, [workDate]);
 
-  const runClose = (overwrite: boolean) => start(async () => {
-    const r = await closeDay(src, carry, overwrite);
-    if (r.needConfirm) {
+  const runClose = () => start(async () => {
+    const r = await closeDay(src, carry);
+    if (r.blocked) {
       setConfirmBox({
-        title: "이미 이월 데이터 있음",
-        lines: [`${fmtD(r.carryDate)} 에 이미 미작업 재고 ${r.existing}건이 있습니다.`, "덮어쓰고 이월할까요?"],
-        yesLabel: "덮어쓰기",
-        onYes: () => runClose(true),
+        title: "이월 취소 — 기존 데이터 있음",
+        lines: [
+          `${fmtD(r.carryDate)} 에 이미 공정 미작업 재고 ${r.existing}건이 있습니다.`,
+          "그 데이터를 다른 날짜로 옮기거나 삭제한 뒤 다시 시도하세요.",
+          "(덮어쓰지 않고 취소했습니다)",
+        ],
+        yesLabel: "확인",
+        onYes: () => {},
+        infoOnly: true,
       });
       return;
     }
@@ -57,17 +62,22 @@ export function DayClose({ workDate }: { workDate: string }) {
       `공정 미작업 재고를 ${fmtD(carry)} 로 이월합니다.`,
     ],
     yesLabel: "마감 실행",
-    onYes: () => runClose(false),
+    onYes: () => runClose(),
   });
 
-  const runMove = (overwrite: boolean) => start(async () => {
-    const r = await moveDate(from, to, overwrite);
-    if (r.needConfirm) {
+  const runMove = () => start(async () => {
+    const r = await moveDate(from, to);
+    if (r.blocked) {
       setConfirmBox({
-        title: "기존 데이터 있음",
-        lines: [`${fmtD(r.toDate)} 에 이미 데이터 ${r.existing}건이 있습니다.`, "덮어쓰고 옮길까요?"],
-        yesLabel: "덮어쓰기",
-        onYes: () => runMove(true),
+        title: "날짜 변경 취소 — 기존 데이터 있음",
+        lines: [
+          `${fmtD(r.toDate)} 에 이미 데이터 ${r.existing}건이 있습니다.`,
+          "그 데이터를 다른 날짜로 옮기거나 삭제한 뒤 다시 시도하세요.",
+          "(덮어쓰지 않고 취소했습니다)",
+        ],
+        yesLabel: "확인",
+        onYes: () => {},
+        infoOnly: true,
       });
       return;
     }
@@ -78,7 +88,7 @@ export function DayClose({ workDate }: { workDate: string }) {
     title: "🔁 날짜 변경",
     lines: [`${fmtD(from)} 의 데이터를 ${fmtD(to)} 로 옮깁니다.`],
     yesLabel: "변경",
-    onYes: () => runMove(false),
+    onYes: () => runMove(),
   });
 
   return (
@@ -125,8 +135,10 @@ export function DayClose({ workDate }: { workDate: string }) {
               {confirmBox.lines.map((l, i) => <p key={i}>{l}</p>)}
             </div>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setConfirmBox(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+              {!confirmBox.infoOnly && (
+                <button onClick={() => setConfirmBox(null)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+              )}
               <button disabled={pending}
                 onClick={() => { const f = confirmBox.onYes; setConfirmBox(null); f(); }}
                 className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">

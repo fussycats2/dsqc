@@ -58,7 +58,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const [to, setTo] = useState(nextDay(workDate));
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmBox, setConfirmBox] = useState<
-    { title: string; lines: string[]; yesLabel: string; onYes: () => void } | null
+    { title: string; lines: string[]; yesLabel: string; onYes: () => void; infoOnly?: boolean } | null
   >(null);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -196,24 +196,32 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     setMsg(`${fmtD(workDate)} 로 엑셀 결산서 가져옴 (${r.count}칸)`);
     router.refresh();
   });
-  const runCarry = (overwrite: boolean) => start(async () => {
-    const r = await carrySettlement(src, carry, overwrite);
-    if (r.needConfirm) {
-      setConfirmBox({ title: "이미 이월 데이터 있음", lines: [`${fmtD(r.carryDate)} 에 이미 결산 데이터가 있습니다.`, "덮어쓰고 이월할까요?"], yesLabel: "덮어쓰기", onYes: () => runCarry(true) });
+  const runCarry = () => start(async () => {
+    const r = await carrySettlement(src, carry);
+    if (r.blocked) {
+      setConfirmBox({
+        title: "이월 취소 — 기존 데이터 있음",
+        lines: [`${fmtD(r.carryDate)} 에 이미 결산 데이터가 있습니다.`, "그 데이터를 다른 날짜로 옮기거나 삭제한 뒤 다시 시도하세요.", "(덮어쓰지 않고 취소했습니다)"],
+        yesLabel: "확인", onYes: () => {}, infoOnly: true,
+      });
       return;
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.date)} 마감값을 ${fmtD(r.carryDate)} 전일값으로 이월`);
   });
-  const doCarry = () => setConfirmBox({ title: "📅 결산 마감·이월", lines: [`${fmtD(src)} 결산을 저장(스냅샷)하고`, `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`, "(위탁 분석중량·고정값은 유지)"], yesLabel: "마감·이월", onYes: () => runCarry(false) });
-  const runMove = (overwrite: boolean) => start(async () => {
-    const r = await moveSettlement(from, to, overwrite);
-    if (r.needConfirm) {
-      setConfirmBox({ title: "기존 데이터 있음", lines: [`${fmtD(r.toDate)} 에 이미 결산서가 있습니다.`, "덮어쓰고 옮길까요?"], yesLabel: "덮어쓰기", onYes: () => runMove(true) });
+  const doCarry = () => setConfirmBox({ title: "📅 결산 마감·이월", lines: [`${fmtD(src)} 결산을 저장(스냅샷)하고`, `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`, "(위탁 분석중량·고정값은 유지)"], yesLabel: "마감·이월", onYes: () => runCarry() });
+  const runMove = () => start(async () => {
+    const r = await moveSettlement(from, to);
+    if (r.blocked) {
+      setConfirmBox({
+        title: "날짜 변경 취소 — 기존 데이터 있음",
+        lines: [`${fmtD(r.toDate)} 에 이미 결산서가 있습니다.`, "그 데이터를 다른 날짜로 옮기거나 삭제한 뒤 다시 시도하세요.", "(덮어쓰지 않고 취소했습니다)"],
+        yesLabel: "확인", onYes: () => {}, infoOnly: true,
+      });
       return;
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.fromDate)} → ${fmtD(r.toDate)} 로 결산서 날짜 변경`);
   });
-  const doMove = () => setConfirmBox({ title: "🔁 결산서 날짜 변경", lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`, `${fmtD(to)} 의 기존 결산서는 덮어씁니다.`], yesLabel: "변경", onYes: () => runMove(false) });
+  const doMove = () => setConfirmBox({ title: "🔁 결산서 날짜 변경", lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`], yesLabel: "변경", onYes: () => runMove() });
 
   // 결재란
   const approval = (cols: string[]) => (
@@ -295,7 +303,9 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
             <h3 className="mb-3 text-base font-bold">{confirmBox.title}</h3>
             <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-neutral-300">{confirmBox.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setConfirmBox(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+              {!confirmBox.infoOnly && (
+                <button onClick={() => setConfirmBox(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
+              )}
               <button disabled={pending} onClick={() => { const fn = confirmBox.onYes; setConfirmBox(null); fn(); }} className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">{confirmBox.yesLabel}</button>
             </div>
           </div>

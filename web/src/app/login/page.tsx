@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
@@ -14,6 +14,13 @@ export default function LoginPage() {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // 유휴(5시간) 자동 로그아웃으로 돌아온 경우 안내
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("reason") === "timeout")
+      setNotice("5시간 동안 활동이 없어 자동 로그아웃되었습니다. 다시 로그인해 주세요.");
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +48,12 @@ export default function LoginPage() {
           style={{ backgroundImage: "url(/login-logo.png)" }} />
 
         <p className="text-center text-xs text-slate-400 dark:text-neutral-500">공용 계정으로 로그인</p>
+
+        {notice && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+            {notice}
+          </p>
+        )}
 
         <label className="block">
           <span className="text-xs text-slate-500 dark:text-neutral-400">이메일</span>

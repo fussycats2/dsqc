@@ -28,7 +28,7 @@ const hasData = (d: CellMap | null | undefined) =>
   !!d && Object.values(d).some((v) => v != null && v !== 0);
 
 // 이월: 마감일(src) 마감값 → 이월일(carry) 전일값으로 복사(전일 데이터는 그대로 보존)
-export async function carrySettlement(src: string, carry: string, overwrite = false) {
+export async function carrySettlement(src: string, carry: string) {
   if (!src || !carry) return { error: "마감일과 이월일을 선택하세요." };
   if (src === carry) return { error: "이월일은 마감일과 달라야 합니다." };
   const supabase = await createClient();
@@ -39,8 +39,8 @@ export async function carrySettlement(src: string, carry: string, overwrite = fa
 
   const { data: dstRow } = await supabase
     .from("settlements").select("data").eq("work_date", carry).maybeSingle();
-  if (hasData(dstRow?.data as CellMap) && !overwrite)
-    return { needConfirm: true, carryDate: carry };
+  if (hasData(dstRow?.data as CellMap))
+    return { blocked: true, carryDate: carry };
 
   const next = carryData(srcData);
   const { error } = await supabase
@@ -52,7 +52,7 @@ export async function carrySettlement(src: string, carry: string, overwrite = fa
 }
 
 // 날짜 변경: from 결산서를 to로 옮김(to에 데이터 있으면 덮어쓰기 확인)
-export async function moveSettlement(from: string, to: string, overwrite = false) {
+export async function moveSettlement(from: string, to: string) {
   if (!from || !to) return { error: "날짜를 선택하세요." };
   if (from === to) return { error: "같은 날짜입니다." };
   const supabase = await createClient();
@@ -63,8 +63,8 @@ export async function moveSettlement(from: string, to: string, overwrite = false
 
   const { data: toRow } = await supabase
     .from("settlements").select("data").eq("work_date", to).maybeSingle();
-  if (hasData(toRow?.data as CellMap) && !overwrite)
-    return { needConfirm: true, toDate: to };
+  if (hasData(toRow?.data as CellMap))
+    return { blocked: true, toDate: to };
 
   const { error } = await supabase
     .from("settlements")

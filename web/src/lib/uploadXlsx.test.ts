@@ -1,0 +1,61 @@
+import { describe, it, expect } from "vitest";
+import JSZip from "jszip";
+import { fillUploadXlsm, parseUploadXlsm } from "./uploadXlsx";
+import type { Lot, SchemaType } from "./types";
+
+const procs: { id: string; name: string; schema_type: SchemaType }[] = [
+  { id: "p-io", name: "기계", schema_type: "io" },
+  { id: "p-wk", name: "연마(조립)", schema_type: "work" },
+];
+
+const lot = (o: Partial<Lot>): Lot => ({
+  id: o.id ?? Math.random().toString(36).slice(2),
+  serial: null, process_id: "", side: "in",
+  description: null, qty: null, weight: null, weight_in: null, weight_before: null,
+  tag: null, tag_fixed: null, tag_weight: null, tag_loss: null, q: null,
+  due_date: null, raw_weight: null, note: null, prev_part_name: null, prev_process_id: null,
+  moved_at: null, moved_to_name: null, status: "대기", locked: false,
+  work_date: "2026-06-01", period_id: null, created_at: "2026-06-01T00:00:00Z",
+  completed_at: null, updated_at: "2026-06-01T00:00:00Z", version: 1,
+  ...o,
+});
+
+describe("uploadXlsx 백업/복원 왕복", () => {
+  it("io/work · in/out · 잠금 마커가 보존되고 VBA가 유지된다", async () => {
+    const lots: Lot[] = [
+      lot({ id: "1", process_id: "p-io", side: "in", serial: "M_260601_001", description: "반지", qty: 3, weight: 12.34, tag: 0.07, raw_weight: "5.2" }),
+      lot({ id: "2", process_id: "p-io", side: "in", serial: "M_260601_002", weight: 8, moved_at: "2026-06-01 10:00:00", moved_to_name: "연마(조립)", locked: true }),
+      lot({ id: "3", process_id: "p-io", side: "out", serial: "M_260601_003", weight: 9.99, tag: 0.035 }),
+      lot({ id: "4", process_id: "p-wk", side: "in", serial: "A_260601_001", weight: 7.5, prev_part_name: "기계" }),
+      lot({ id: "5", process_id: "p-wk", side: "in", serial: "A_260601_002", weight: 6, locked: true }), // 현황=완료
+      lot({ id: "6", process_id: "p-wk", side: "out", serial: "A_260601_003", weight_before: 10, weight: 9.5, moved_at: "2026-06-01 11:00:00", moved_to_name: "빠우(양장볼)", locked: true }),
+      lot({ id: "7", process_id: "p-wk", side: "out", serial: "A_260601_004", weight_before: 5, weight: 4.8 }), // 미이관 → unlocked
+    ];
+
+    const buf = await fillUploadXlsm(procs, lots);
+
+    // 매크로(VBA) 보존
+    const zip = await JSZip.loadAsync(buf);
+    expect(zip.file("xl/vbaProject.bin")).not.toBeNull();
+
+    const parsed = await parseUploadXlsm(buf, procs);
+    const find = (serial: string) => parsed.find((p) => p.serial === serial)!;
+
+    expect(parsed.length).toBe(7);
+    expect(find("M_260601_001").qty).toBe(3);
+    expect(find("M_260601_001").weight).toBeCloseTo(12.34);
+    expect(find("M_260601_001").raw_weight).toBe("5.2");
+    expect(find("M_260601_001").description).toBe("반지");
+
+    // 잠금 판정(VBA 규칙)
+    expect(find("M_260601_002").locked).toBe(true); // io입고 투입시간 채워짐
+    expect(find("M_260601_003").locked).toBe(false); // io출고 완료개념 없음
+    expect(find("A_260601_001").locked).toBe(false);
+    expect(find("A_260601_002").locked).toBe(true); // work작업중 현황=완료
+    expect(find("A_260601_003").locked).toBe(true); // work완료 이관/출고시간
+    expect(find("A_260601_004").locked).toBe(false); // work완료 미이관
+
+    expect(find("A_260601_003").weight_before).toBeCloseTo(10);
+    expect(find("A_260601_003").moved_to_name).toBe("빠우(양장볼)");
+  });
+});

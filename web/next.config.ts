@@ -20,10 +20,11 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   // 빌드 시각·커밋 해시를 클라이언트 번들에 인라인(로그인 페이지 표시용)
   env: { NEXT_PUBLIC_BUILD_TIME: BUILD_TIME, NEXT_PUBLIC_BUILD_SHA: BUILD_SHA },
-  // 결산서 백업/복원 라우트 lambda에 .xlsm 템플릿 포함(런타임 fs 읽기)
+  // 백업/복원 라우트 lambda에 .xlsm 템플릿 포함(런타임 fs 읽기)
   outputFileTracingIncludes: {
     "/api/settlement/export": ["./templates/**"],
     "/api/settlement/import": ["./templates/**"],
+    "/api/upload/export": ["./templates/**"],
   },
 };
 
