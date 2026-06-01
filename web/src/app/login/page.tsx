@@ -5,8 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
 const DEFAULT_EMAIL = process.env.NEXT_PUBLIC_LOGIN_EMAIL ?? "";
-// 빌드(배포) 시각 — next.config.ts에서 빌드 순간(KST) 주입
+// 빌드(배포) 시각·커밋 해시 — next.config.ts에서 빌드 순간 주입
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME ?? "";
+const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA ?? "";
 
 export default function LoginPage() {
   const [email, setEmail] = useState(DEFAULT_EMAIL);
@@ -66,7 +67,7 @@ export default function LoginPage() {
       {/* 빌드(배포) 시각 — 좌하단 */}
       {BUILD_TIME && (
         <div className="absolute bottom-4 left-5 text-[10px] text-slate-400 dark:text-neutral-600">
-          Build {BUILD_TIME} (KST)
+          Build {BUILD_TIME} (KST){BUILD_SHA && <span className="ml-1 opacity-70">· {BUILD_SHA}</span>}
         </div>
       )}
 
