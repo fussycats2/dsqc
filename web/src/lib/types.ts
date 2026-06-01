@@ -53,6 +53,7 @@ export interface ColDef {
   width?: number;
   computed?: "loss" | "lossRate" | "ship";     // 자동 계산 표시 칸(표·모달 미리보기)
   autoFit?: boolean;                            // 줄바꿈 없이 셀 폭에 맞춰 글자 자동 축소(투입부서·이전파트 등 넓힌 칸)
+  bold?: boolean;                               // 데이터 굵게(io 중량·출고중량, work 중량·작업후 — 핵심 중량)
 }
 
 // ───────── 계보 추적 (lot_links 그래프) ─────────
@@ -94,7 +95,7 @@ const IO_IN: ColDef[] = [
   { key: "serial", label: "일련번호", kind: "text", width: 148 },  // 출고와 동일(카드 비례배분으로 같은 px)
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
-  { key: "weight", label: "중량", kind: "weight", width: 64 },
+  { key: "weight", label: "중량", kind: "weight", width: 64, bold: true },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
@@ -117,7 +118,7 @@ const IO_OUT: ColDef[] = [
   { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 56 },  // 표=Tag보정 모달 전용, 모달=수정 가능
   { key: "tag_weight", label: "Tag중량", kind: "weight", width: 56 }, // Tag보정=ROUNDDOWN 자동
   { key: "tag_loss", label: "Tag로스", kind: "weight", width: 56 },   // Tag보정=Tag−Tag중량 자동
-  { key: "weight", label: "출고중량", kind: "weight", width: 66, computed: "ship" },
+  { key: "weight", label: "출고중량", kind: "weight", width: 66, computed: "ship", bold: true },
 ];
 
 // ───────── work 계열 (연마·뻥·빠우) ─────────
@@ -132,7 +133,7 @@ const WORK_IN: ColDef[] = [
   { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
-  { key: "weight", label: "중량", kind: "weight", width: 64 },
+  { key: "weight", label: "중량", kind: "weight", width: 64, bold: true },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 119, autoFit: true }, // "파트명 일 HH:MM" 길어 — 넘치면 글자 자동 축소
 ];
 const WORK_OUT: ColDef[] = [
@@ -140,7 +141,7 @@ const WORK_OUT: ColDef[] = [
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
   { key: "weight_before", label: "작업전", kind: "weight", width: 64 }, // 표=집계 합(읽기), 모달=수정 가능
-  { key: "weight", label: "작업후", kind: "weight", width: 64 },
+  { key: "weight", label: "작업후", kind: "weight", width: 64, bold: true },
   { key: "weight", label: "로스", kind: "weight", width: 56, computed: "loss" },
   { key: "weight", label: "로스율", kind: "weight", width: 58, computed: "lossRate" },
   { key: "tag", label: "Tag", kind: "weight", width: 56 },

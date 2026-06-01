@@ -201,7 +201,8 @@ function LotTable({
                           : c.key === "due_date" ? "text-center" : "";
                       if (c.computed)
                         return (
-                          <td key={i} className={`break-words px-1.5 py-1 text-slate-500 dark:text-neutral-400 ${align}`}>
+                          <td key={i} className={`break-words px-1.5 py-1 ${align} ${
+                            c.bold ? "font-bold" : "text-slate-500 dark:text-neutral-400"}`}>
                             {computedValue(c, r)}
                           </td>
                         );
@@ -243,7 +244,7 @@ function LotTable({
                         );
                       }
                       return (
-                        <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`} title={fmtCell(r[c.key], c.kind)}>
+                        <td key={i} className={`${cellCls} px-1.5 py-1 ${align} ${c.bold ? "font-bold" : ""}`} title={fmtCell(r[c.key], c.kind)}>
                           {fmtCell(r[c.key], c.kind)}
                         </td>
                       );
