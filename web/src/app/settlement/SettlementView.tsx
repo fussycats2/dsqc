@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { fmtWeight } from "@/lib/types";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
 import { saveSettlement, carrySettlement, moveSettlement, pushFromLots } from "./settlementActions";
@@ -57,6 +58,8 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     { title: string; lines: string[]; yesLabel: string; onYes: () => void } | null
   >(null);
   const [pending, start] = useTransition();
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setVals(toStr(initial));
@@ -179,6 +182,17 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     if (r.data) setVals(toStr(r.data));
     setMsg(`${fmtD(workDate)} 결산전송 완료 — 입고·출고·분석투입량 자동 반영`);
   });
+  // 엑셀 가져오기 — 현재 작업일로 업로드(그 날짜에 데이터 있으면 서버가 취소)
+  const onImportFile = (file: File) => start(async () => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("date", workDate);
+    const res = await fetch("/api/settlement/import", { method: "POST", body: fd });
+    const r = await res.json();
+    if (r.error) { setConfirmBox({ title: "가져오기 취소", lines: String(r.error).split("\n"), yesLabel: "확인", onYes: () => {} }); return; }
+    setMsg(`${fmtD(workDate)} 로 엑셀 결산서 가져옴 (${r.count}칸)`);
+    router.refresh();
+  });
   const runCarry = (overwrite: boolean) => start(async () => {
     const r = await carrySettlement(src, carry, overwrite);
     if (r.needConfirm) {
@@ -222,6 +236,13 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <button onClick={doPush} disabled={pending} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">결산전송</button>
           <button onClick={doSave} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">저장</button>
           <button onClick={() => window.print()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">인쇄</button>
+          <span className="mx-1 text-slate-200 dark:text-neutral-700">|</span>
+          <a href={`/api/settlement/export?date=${workDate}`}
+            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">📥 엑셀 백업</a>
+          <button onClick={() => fileRef.current?.click()} disabled={pending}
+            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">📤 엑셀 가져오기</button>
+          <input ref={fileRef} type="file" accept=".xlsm,.xlsx" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportFile(f); e.target.value = ""; }} />
         </div>
       </div>
 

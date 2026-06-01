@@ -9,6 +9,21 @@ export type CellMap = Record<string, number | null>;
 const g = (d: CellMap, a: string) => Number(d[a]) || 0;
 const colRange = (cols: string, row: number) => cols.split("").map((c) => `${c}${row}`);
 
+// 엑셀 백업/복원 시 읽고 쓰는 입력 셀(수식·라벨 제외). 엑셀 '일일결산서' 셀 주소 그대로.
+//  (hbjr18/hbjr14=현분잔량은 엑셀에 셀이 없는 웹 전용 → 제외)
+export const INPUT_CELLS: string[] = [
+  ...colRange("BCDEFGHI", 5), ...colRange("BCDEFGHI", 6),           // K18 입고·출고
+  ...[9, 10, 11].flatMap((r) => [`B${r}`, ...colRange("CDEFGHIJK", r)]), // K18 분석투입
+  "I13", "B15", "C15", "D15", "B18",                               // 분석누계·돌가랑·전일재고
+  "C19", "D19", "E19", "F19", "G19", "I19", "J19", "K19", "L19",   // K18 위탁(H19=현분대체 라벨 제외)
+  ...colRange("CDEFGHIJKL", 21),                                   // K18 분석업체별
+  ...colRange("BCDEFGH", 29), ...colRange("BCDEFGH", 30),          // K14 입고·출고
+  ...[33, 34, 35].flatMap((r) => [`B${r}`, ...colRange("CDEFGHIJK", r)]), // K14 분석투입
+  "I37", "B39", "C39", "D39", "B42",
+  "C43", "D43", "E43", "F43", "G43", "I43", "J43", "K43", "L43",   // K14 위탁
+  ...colRange("CDEFGHIJ", 45),                                     // K14 분석업체별
+];
+
 // ───────── 수식칸 계산 (엑셀 수식 그대로) ─────────
 export function derive(d: CellMap): Record<string, number> {
   const s = (addrs: string[]) => round2(addrs.reduce((a, x) => a + g(d, x), 0));
