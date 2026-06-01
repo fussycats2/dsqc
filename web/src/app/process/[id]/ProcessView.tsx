@@ -159,8 +159,9 @@ function LotTable({
                 <input type="checkbox" checked={allSel} onChange={(e) => onToggleAll(e.target.checked)} />
               </th>
               {columns.map((c, i) => {
-                // Tag수정/Tag중량/Tag로스 헤더는 폭이 좁아 줄바꿈 → 글자만 축소
-                const tight = c.key === "tag_fixed" || c.key === "tag_weight" || c.key === "tag_loss";
+                // Tag수정/중량/로스 + 시간(투입시간·이관/출고시간) 헤더는 폭이 좁아 줄바꿈 → 글자만 축소·한 줄 고정
+                const tight = c.key === "tag_fixed" || c.key === "tag_weight" || c.key === "tag_loss"
+                  || c.kind === "datetime";
                 return (
                   <th key={i} style={{ top: headTop }}
                     className={`sticky z-10 bg-slate-100 py-1.5 text-center font-medium dark:bg-neutral-800 ${
