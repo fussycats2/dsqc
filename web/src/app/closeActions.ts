@@ -108,12 +108,24 @@ export async function closeDay(sourceDate: string, carryDate: string, overwrite 
 }
 
 // 한 작업일의 데이터 전체를 다른 날짜로 변경(이월일 재조정 + 스냅샷 날짜 변경 겸용)
+//  · 옮길 날짜(to)의 기존 데이터는 덮어씀(삭제 후 이동)
 //  · lots.work_date 일괄 변경 + 해당 day period(스냅샷) label도 변경
-//  · 옮길 날짜에 데이터가 있으면 합쳐짐(같은 work_date)
-export async function moveDate(fromDate: string, toDate: string) {
+export async function moveDate(fromDate: string, toDate: string, overwrite = false) {
   if (!fromDate || !toDate) return { error: "날짜를 선택하세요." };
   if (fromDate === toDate) return { error: "같은 날짜입니다." };
   const supabase = await createClient();
+
+  // 옮길 날짜에 기존 데이터가 있으면 한 번 더 확인(덮어쓰기 경고)
+  const { data: existing } = await supabase
+    .from("lots").select("id").eq("work_date", toDate);
+  if (existing && existing.length > 0 && !overwrite) {
+    return { needConfirm: true, existing: existing.length, toDate };
+  }
+
+  // 덮어쓰기: 옮길 날짜의 기존 lots·스냅샷 제거
+  const { error: delErr } = await supabase.from("lots").delete().eq("work_date", toDate);
+  if (delErr) return { error: "기존 데이터 삭제 실패: " + delErr.message };
+  await supabase.from("periods").delete().eq("kind", "day").eq("label", toDate);
 
   const { error, count } = await supabase
     .from("lots").update({ work_date: toDate }, { count: "exact" }).eq("work_date", fromDate);

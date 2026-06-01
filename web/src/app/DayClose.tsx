@@ -51,26 +51,32 @@ export function DayClose({ workDate }: { workDate: string }) {
   const doClose = () => setConfirmBox({
     title: "📅 일마감",
     lines: [
-      `· ${fmtD(src)} 현황을 스냅샷으로 저장`,
-      `· 공정 미작업 재고를 ${fmtD(carry)} 로 복사 이월(원래 날짜에도 유지)`,
-      "· 부서·검수는 그대로",
-      "진행할까요?",
+      `${fmtD(src)} 현황을 저장하고`,
+      `공정 미작업 재고를 ${fmtD(carry)} 로 이월합니다.`,
     ],
     yesLabel: "마감 실행",
     onYes: () => runClose(false),
   });
 
+  const runMove = (overwrite: boolean) => start(async () => {
+    const r = await moveDate(from, to, overwrite);
+    if (r.needConfirm) {
+      setConfirmBox({
+        title: "기존 데이터 있음",
+        lines: [`${fmtD(r.toDate)} 에 이미 데이터 ${r.existing}건이 있습니다.`, "덮어쓰고 옮길까요?"],
+        yesLabel: "덮어쓰기",
+        onYes: () => runMove(true),
+      });
+      return;
+    }
+    setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.fromDate)} → ${fmtD(r.toDate)} 로 ${r.moved}건 날짜 변경`);
+  });
+
   const doMove = () => setConfirmBox({
     title: "🔁 날짜 변경",
-    lines: [
-      `${fmtD(from)} 의 데이터 전체를 ${fmtD(to)} 로 옮길까요?`,
-      `(${fmtD(to)} 에 데이터가 있으면 합쳐집니다)`,
-    ],
+    lines: [`${fmtD(from)} 의 데이터를 ${fmtD(to)} 로 옮깁니다.`],
     yesLabel: "변경",
-    onYes: () => start(async () => {
-      const r = await moveDate(from, to);
-      setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.fromDate)} → ${fmtD(r.toDate)} 로 ${r.moved}건 날짜 변경`);
-    }),
+    onYes: () => runMove(false),
   });
 
   return (

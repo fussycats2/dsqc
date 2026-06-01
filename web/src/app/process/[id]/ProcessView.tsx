@@ -234,9 +234,9 @@ function EditPanel({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-[1100px] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}>
-        <div className="relative mb-3 flex items-center justify-center">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-bold">✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></h3>
-          <div className="absolute right-0 flex gap-2">
+          <div className="flex gap-2">
             <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs dark:border-neutral-600">취소</button>
             <button onClick={save} disabled={pending}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">저장</button>
@@ -250,7 +250,7 @@ function EditPanel({
           return (
             <label key={key} className="flex flex-col gap-0.5"
               style={{ width: Math.max(c.width ?? 60, 48) }}>
-              <span className="truncate text-[11px] text-slate-500 dark:text-neutral-400">{c.label}</span>
+              <span className="truncate text-center text-[11px] text-slate-500 dark:text-neutral-400">{c.label}</span>
               {isNumKind(c.kind) ? (
                 <NumberInput value={vals[key]} kind={c.kind as "int" | "weight"} onChange={(v) => set(key, v)} className={cls} />
               ) : (
