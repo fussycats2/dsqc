@@ -169,11 +169,22 @@ export function TabBar({ processes }: { processes: Process[] }) {
             );
           })
         )}
-        {/* 결산서 — 하단 탭 맨 오른쪽 고정 */}
+        {/* 인쇄 · 결산서 — 하단 탭 맨 오른쪽 고정 */}
+        <button
+          type="button"
+          onClick={() => go("/print")}
+          className={`ml-auto shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            pathname.startsWith("/print")
+              ? "bg-slate-700 text-white dark:bg-slate-600"
+              : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+          }`}
+        >
+          🖨 인쇄
+        </button>
         <button
           type="button"
           onClick={() => go("/settlement")}
-          className={`ml-auto shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             pathname === "/settlement"
               ? "bg-slate-700 text-white dark:bg-slate-600"
               : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"

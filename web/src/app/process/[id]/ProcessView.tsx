@@ -749,7 +749,6 @@ export function ProcessView({
                   Tag 확정
                 </Btn>
               )}
-              <Btn tone="ghost" onClick={() => window.print()}>인쇄</Btn>
             </>
           )}
           <Btn tone="ghost" disabled={pending || nOut === 0}
