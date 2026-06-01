@@ -91,7 +91,7 @@ export const RELATION_LABEL: Record<LotRelation, string> = {
 // 폭(좌/우 비례배분): 내역·수량·비고 축소(줄바꿈↓), 입고=투입부서↑ · 출고=이전파트↑
 //  · 카드 폭을 열 합폭에 비례 배분(ProcessView)하므로 같은 nominal 폭이면 좌/우 같은 px로 렌더 → 일련번호도 동일값
 const IO_IN: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 164 },  // 투입부서/이전파트 줄인 만큼 넓힘(출고와 동일)
+  { key: "serial", label: "일련번호", kind: "text", width: 148 },  // 출고와 동일(카드 비례배분으로 같은 px)
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
   { key: "weight", label: "중량", kind: "weight", width: 64 },
@@ -99,12 +99,12 @@ const IO_IN: ColDef[] = [
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
-  { key: "note", label: "비고", kind: "text", width: 48, autoFit: true },
+  { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
   { key: "moved_at", label: "투입시간", kind: "datetime", width: 64 },  // 데이터 "일 HH:MM"=짧음 → 축소
   { key: "moved_to_name", label: "투입부서", kind: "text", width: 98, autoFit: true }, // 넘치면 글자 자동 축소
 ];
 const IO_OUT: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 164 },  // 입고와 동일(카드 비례배분으로 같은 px)
+  { key: "serial", label: "일련번호", kind: "text", width: 148 },  // 입고와 동일(카드 비례배분으로 같은 px)
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
   { key: "weight", label: "실중량", kind: "weight", width: 64 },   // 표=이전파트 이월(읽기), 모달=수정 가능
@@ -112,7 +112,7 @@ const IO_OUT: ColDef[] = [
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
-  { key: "note", label: "비고", kind: "text", width: 48, autoFit: true },
+  { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 105, autoFit: true }, // 넘치면 글자 자동 축소
   { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 56 },  // 표=Tag보정 모달 전용, 모달=수정 가능
   { key: "tag_weight", label: "Tag중량", kind: "weight", width: 56 }, // Tag보정=ROUNDDOWN 자동
@@ -123,7 +123,7 @@ const IO_OUT: ColDef[] = [
 // ───────── work 계열 (연마·뻥·빠우) ─────────
 // 작업중블록(완료블록 M:Z) — 현황(A) 열은 제거: 잠금=완료/미잠금=재고로 구분
 const WORK_IN: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 170 },  // 이전파트 줄인 만큼 넓힘(완료와 동일)
+  { key: "serial", label: "일련번호", kind: "text", width: 153 },  // 완료와 동일(카드 비례배분으로 같은 px)
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
   { key: "weight_in", label: "입중량", kind: "weight", width: 64 },
@@ -131,12 +131,12 @@ const WORK_IN: ColDef[] = [
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
-  { key: "note", label: "비고", kind: "text", width: 48, autoFit: true },
+  { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
   { key: "weight", label: "중량", kind: "weight", width: 64 },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 119, autoFit: true }, // "파트명 일 HH:MM" 길어 — 넘치면 글자 자동 축소
 ];
 const WORK_OUT: ColDef[] = [
-  { key: "serial", label: "일련번호", kind: "text", width: 170 },  // 작업중과 동일(카드 비례배분으로 같은 px)
+  { key: "serial", label: "일련번호", kind: "text", width: 153 },  // 작업중과 동일(카드 비례배분으로 같은 px)
   { key: "description", label: "내역", kind: "text", width: 80, autoFit: true },
   { key: "qty", label: "수량", kind: "int", width: 38 },
   { key: "weight_before", label: "작업전", kind: "weight", width: 64 }, // 표=집계 합(읽기), 모달=수정 가능
@@ -147,7 +147,7 @@ const WORK_OUT: ColDef[] = [
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
-  { key: "note", label: "비고", kind: "text", width: 48, autoFit: true },
+  { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
   { key: "moved_at", label: "이관/출고시간", kind: "datetime", width: 70 }, // 데이터 "일 HH:MM"=짧음 → 축소
   { key: "moved_to_name", label: "이관파트", kind: "text", width: 112, autoFit: true }, // 넘치면 글자 자동 축소
 ];
