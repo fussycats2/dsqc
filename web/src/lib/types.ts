@@ -30,7 +30,7 @@ export interface Lot {
   tag_loss: number | null;      // io출고 Tag로스(X)
   q: number | null;
   due_date: string | null;
-  raw_weight: number | null;    // 원중량
+  raw_weight: string | null;    // 원중량 — 자유 텍스트(집계 시 중복제거-결합, VBA textAlways)
   note: string | null;
   prev_part_name: string | null;// 이전파트 표시(io출고 U / work작업중 L)
   prev_process_id: string | null;
@@ -66,7 +66,7 @@ const IO_IN: ColDef[] = [
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "raw_weight", label: "원중량", kind: "text", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "moved_at", label: "투입시간", kind: "datetime", width: 86 },
   { key: "moved_to_name", label: "투입부서", kind: "text", width: 76 },
@@ -79,7 +79,7 @@ const IO_OUT: ColDef[] = [
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "raw_weight", label: "원중량", kind: "text", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 86 },
   { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 56 },  // 표=Tag보정 모달 전용, 모달=수정 가능
@@ -98,7 +98,7 @@ const WORK_IN: ColDef[] = [
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "raw_weight", label: "원중량", kind: "text", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "weight", label: "중량", kind: "weight", width: 64 },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 104 },
@@ -114,7 +114,7 @@ const WORK_OUT: ColDef[] = [
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 54 },
-  { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
+  { key: "raw_weight", label: "원중량", kind: "text", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 66 },
   { key: "moved_at", label: "이관/출고시간", kind: "datetime", width: 96 },
   { key: "moved_to_name", label: "이관파트", kind: "text", width: 100 },
@@ -128,7 +128,7 @@ const ENTRY_IN: ColDef[] = [
   { key: "tag", label: "Tag", kind: "weight", width: 56 },
   { key: "q", label: "Q", kind: "weight", width: 48 },
   { key: "due_date", label: "납기", kind: "text", width: 76 },
-  { key: "raw_weight", label: "원중량(수리)", kind: "weight", width: 80 },
+  { key: "raw_weight", label: "원중량(수리)", kind: "text", width: 80 },
   { key: "note", label: "비고", kind: "text", width: 88 },
 ];
 

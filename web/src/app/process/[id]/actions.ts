@@ -38,11 +38,10 @@ type LotRow = Record<string, unknown> & {
 const N = (v: unknown) => Number(v) || 0;
 const sumOf = (rows: LotRow[], k: string) =>
   round2(rows.reduce((a, l) => a + N(l[k]), 0)) || null;
-const joinDesc = (rows: LotRow[]) =>
-  [...new Set(rows.map((l) => l.description).filter(Boolean))].join(",") || null;
-// 납기는 자유 텍스트(현장에서 2개 입력 가능) → 내역처럼 중복 제거 후 콤마 결합해 전부 보존
-const joinDue = (rows: LotRow[]) =>
-  [...new Set(rows.map((l) => l.due_date).filter(Boolean))].join(",") || null;
+// 텍스트 결합(중복 제거 후 콤마) — VBA Module7 textAlways: 내역(C)·납기(H)·원중량(I)·비고(J)
+//  납기·원중량은 자유 텍스트(현장에서 복수 입력 가능)라 합산 아닌 결합으로 전부 보존
+const joinText = (rows: LotRow[], k: string) =>
+  [...new Set(rows.map((l) => l[k]).filter(Boolean).map(String))].join(",") || null;
 
 async function nameOf(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
   const { data } = await supabase.from("processes").select("name").eq("id", id).single();
@@ -98,7 +97,7 @@ export async function sendRows(
       tag: toNum(r.tag),
       q: toNum(r.q),
       due_date: toStr(r.due_date),
-      raw_weight: toNum(r.raw_weight),
+      raw_weight: toStr(r.raw_weight), // 원중량 = 자유 텍스트
       note: toStr(r.note),
       work_date: wd,
     });
@@ -135,14 +134,15 @@ export async function completeLots(
       process_id: processId,
       side: "out",
       status: "작업중",
-      description: joinDesc(lots),
-      qty: sumOf(lots, "qty"),
+      description: joinText(lots, "description"),           // 내역(C) 중복제거 결합
+      qty: sumOf(lots, "qty"),                              // 수량(D) 합
       weight_before: sumOf(lots, "weight"),                 // 작업전 = 중량(K) 합
       weight: afterWeight == null ? null : round2(afterWeight), // 작업후 = 모달 입력
-      tag: sumOf(lots, "tag"),
-      q: sumOf(lots, "q"),
-      raw_weight: sumOf(lots, "raw_weight"),
-      due_date: joinDue(lots),
+      tag: sumOf(lots, "tag"),                              // Tag(F) 합
+      q: sumOf(lots, "q"),                                  // Q(G) 합
+      raw_weight: joinText(lots, "raw_weight"),             // 원중량(I) 중복제거 결합(합산 아님)
+      due_date: joinText(lots, "due_date"),                 // 납기(H) 중복제거 결합
+      note: joinText(lots, "note"),                         // 비고(J) 중복제거 결합
       work_date: lots[0]?.work_date, // 집계 결과는 원본 작업일 승계
     })
     .select("id")
