@@ -224,7 +224,26 @@ function rowCells(rowInner: string, shared: string[]): Map<string, number | stri
   return map;
 }
 
+// datetime 칸 → UTC ISO. 엑셀에서 열면 우리가 넣은 문자열이 날짜 일련번호(숫자)로 바뀌므로 둘 다 처리.
+//  값은 KST 벽시계로 간주 → UTC로 환산(timestamptz 컬럼에 안전하게 삽입).
+function parseDateTime(raw: number | string): string | null {
+  if (typeof raw === "number") {
+    const d = new Date(Math.round((raw - 25569) * 86400000) - 9 * 3600000); // 엑셀serial(KST)→UTC
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (m) {
+    const utc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0)) - 9 * 3600000;
+    return new Date(utc).toISOString();
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function normField(col: ColDef, raw: number | string): number | string | null {
+  if (col.kind === "datetime") return parseDateTime(raw);
   if (col.key === "raw_weight") return String(raw);
   if (col.kind === "int") { const n = Number(raw); return Number.isFinite(n) ? Math.round(n) : null; }
   if (col.kind === "weight") { const n = Number(raw); return Number.isFinite(n) ? n : null; }
