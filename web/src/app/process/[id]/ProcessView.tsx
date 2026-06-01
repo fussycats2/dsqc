@@ -161,7 +161,7 @@ function LotTable({
                     </td>
                     {columns.map((c, i) => {
                       const numeric = isNumKind(c.kind) || !!c.computed;
-                      const align = numeric ? "text-right tabular-nums" : "";
+                      const align = numeric ? "text-right tabular-nums" : c.key === "due_date" ? "text-center" : "";
                       if (c.computed)
                         return (
                           <td key={i} className={`break-words px-1.5 py-1 text-slate-500 dark:text-neutral-400 ${align}`}>
@@ -232,7 +232,7 @@ function EditPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-bold">✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></h3>
@@ -242,13 +242,15 @@ function EditPanel({
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">저장</button>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" onKeyDown={focusNextInput}>
+        {/* 칸 폭을 원본 표 열폭(c.width)에 맞추고 한 줄로 흐르게 배치 — 표와 동일한 감각 */}
+        <div className="flex flex-wrap items-end gap-x-2 gap-y-2" onKeyDown={focusNextInput}>
         {fields.map((c) => {
           const key = c.key as string;
-          const cls = "w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
+          const cls = "w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
           return (
-            <label key={key} className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-slate-500 dark:text-neutral-400">{c.label}</span>
+            <label key={key} className="flex flex-col gap-0.5"
+              style={{ width: Math.max(c.width ?? 60, 48) }}>
+              <span className="truncate text-[11px] text-slate-500 dark:text-neutral-400">{c.label}</span>
               {isNumKind(c.kind) ? (
                 <NumberInput value={vals[key]} kind={c.kind as "int" | "weight"} onChange={(v) => set(key, v)} className={cls} />
               ) : (

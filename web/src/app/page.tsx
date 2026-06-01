@@ -17,16 +17,15 @@ interface Agg {
 }
 const EMPTY: Agg = { inW: 0, outW: 0, stock: 0, lossW: 0, outUnlocked: 0 };
 
-// ───────── KPI 요약 카드 ─────────
-function Kpi({ label, value, accent, sub }: { label: string; value: string; accent: string; sub?: string }) {
+// ───────── KPI 요약 카드 (한 줄: 라벨 왼쪽 · 값 오른쪽) ─────────
+function Kpi({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div className="min-w-[160px] flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex min-w-[160px] flex-1 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex items-center gap-2">
         <span className={`h-2.5 w-2.5 rounded-full ${accent}`} />
         <span className="text-xs text-slate-500 dark:text-neutral-400">{label}</span>
       </div>
-      <div className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight">{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] text-slate-400 dark:text-neutral-500">{sub}</div>}
+      <div className="text-xl font-bold tabular-nums tracking-tight">{value}</div>
     </div>
   );
 }
@@ -247,8 +246,8 @@ export default async function Home() {
 
   return (
     <main className="space-y-5 p-6">
-      {/* 상단 제목 */}
-      <div>
+      {/* 상단 제목 — 설명은 제목 오른쪽에 인라인 */}
+      <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
         <p className="text-xs text-slate-400 dark:text-neutral-500">파트별 현황 — 이름을 누르면 해당 시트로 이동</p>
       </div>
@@ -259,10 +258,10 @@ export default async function Home() {
       {/* KPI(18K 재고 라인) + 미출고 알림 — 전역 헤더(49px) 아래 sticky 고정 */}
       <div className="sticky top-[49px] z-10 -mx-6 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
         <div className="flex flex-wrap gap-3">
-          <Kpi label="18K 재고" accent="bg-rose-500" value={fmtWeight(sumStock(work("18K")))} sub="공정 작업중 미집계" />
-          <Kpi label="14K 재고" accent="bg-blue-500" value={fmtWeight(sumStock(work("14K")))} sub="공정 작업중 미집계" />
+          <Kpi label="18K 재고" accent="bg-rose-500" value={fmtWeight(sumStock(work("18K")))} />
+          <Kpi label="14K 재고" accent="bg-blue-500" value={fmtWeight(sumStock(work("14K")))} />
           <Kpi label="작업완료 후 미출고" accent={pendingTotal ? "bg-amber-500" : "bg-slate-300 dark:bg-neutral-600"}
-            value={`${pendingTotal}건`} sub={pendingTotal ? "아래 알림 참고" : "없음"} />
+            value={`${pendingTotal}건`} />
         </div>
         {pendingTotal > 0 && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
