@@ -62,6 +62,16 @@ export async function fillSettlementXlsm(data: CellMap, workDate: string): Promi
       : wbx.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>');
     zip.file("xl/workbook.xml", wbx);
   }
+
+  // calcChain.xml 제거(외부편집으로 실제 셀과 어긋나 '복구' 경고 유발) — 관련 rels·content-type까지 정리.
+  //  fullCalcOnLoad로 엑셀이 열 때 계산체인을 새로 만든다.
+  if (zip.file("xl/calcChain.xml")) {
+    zip.remove("xl/calcChain.xml");
+    const ct = await zip.file("[Content_Types].xml")!.async("string");
+    zip.file("[Content_Types].xml", ct.replace(/<Override PartName="\/xl\/calcChain\.xml"[^>]*\/>/, ""));
+    const rels = await zip.file("xl/_rels/workbook.xml.rels")!.async("string");
+    zip.file("xl/_rels/workbook.xml.rels", rels.replace(/<Relationship [^>]*Target="calcChain\.xml"[^>]*\/>/, ""));
+  }
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 

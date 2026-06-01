@@ -18,6 +18,11 @@ describe("결산서 엑셀 백업/복원 라운드트립", () => {
     expect(zip.file("xl/vbaProject.bin")).not.toBeNull();               // VBA 보존
     const wbx = await zip.file("xl/workbook.xml")!.async("string");
     expect(wbx).toContain("fullCalcOnLoad");                             // 재계산 강제
+    expect(zip.file("xl/calcChain.xml")).toBeNull();                    // calcChain 제거(복구경고 방지)
+    const ct = await zip.file("[Content_Types].xml")!.async("string");
+    expect(ct).not.toContain("calcChain");                              // content-type 정리
+    const rels = await zip.file("xl/_rels/workbook.xml.rels")!.async("string");
+    expect(rels).not.toContain("calcChain");                            // rels 정리(댕글링 없음)
     const sheet = await zip.file("xl/worksheets/sheet20.xml")!.async("string");
     expect(sheet).toMatch(/<c r="A2"[^>]*><v>46162<\/v><\/c>/);          // 2026-05-20 일련번호
   });

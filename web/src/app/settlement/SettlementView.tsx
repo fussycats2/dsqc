@@ -41,6 +41,9 @@ type C =
 
 const dateInputCls =
   "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
+// 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지(대시보드와 동일)
+const lockedDateCls =
+  "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
 
 export function SettlementView({ workDate, initial }: { workDate: string; initial: CellMap }) {
   const toStr = (d: CellMap): Record<string, string> => {
@@ -250,7 +253,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span className="text-sm font-semibold">📅 마감·이월</span>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-slate-500">마감일</label>
-          <input type="date" value={src} onChange={(e) => setSrc(e.target.value)} className={dateInputCls} />
+          <input type="date" value={src} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
           <input type="date" value={carry} onChange={(e) => setCarry(e.target.value)} className={dateInputCls} />
@@ -259,7 +262,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span className="text-slate-200 dark:text-neutral-700">|</span>
         <span className="text-sm font-semibold">🔁 날짜 변경</span>
         <div className="flex items-center gap-1.5">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={dateInputCls} />
+          <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
           <span className="text-slate-300">→</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={dateInputCls} />
           <button onClick={doMove} disabled={pending} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">변경</button>
