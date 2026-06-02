@@ -1,6 +1,6 @@
-import Link from "next/link";
+import { ClientLink } from "@/components/ClientLink";
 import { createClient } from "@/lib/supabase/server";
-import { envMissing } from "@/lib/getProcesses";
+import { envMissing, getProcesses } from "@/lib/getProcesses";
 import { fmtWeight, round2, type Process } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 import { DayClose } from "./DayClose";
@@ -21,7 +21,7 @@ const EMPTY: Agg = { inW: 0, outW: 0, stock: 0, lossW: 0, outUnlocked: 0 };
 function NameLink({ p }: { p: Process }) {
   const blue = p.karat === "14K";
   return (
-    <Link
+    <ClientLink
       href={`/process/${p.id}`}
       className={`group inline-flex items-center gap-1 font-medium hover:underline ${blue ? "text-blue-600 dark:text-blue-400" : ""}`}
     >
@@ -29,7 +29,7 @@ function NameLink({ p }: { p: Process }) {
       <span className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-600">
         ›
       </span>
-    </Link>
+    </ClientLink>
   );
 }
 
@@ -304,12 +304,13 @@ export default async function Home() {
 
   const supabase = await createClient();
   const workDate = await getWorkDate();
-  const [{ data: lotData }, { data: procData }] = await Promise.all([
+  // processes는 getProcesses()(레이아웃과 React cache로 dedupe + 모듈 캐시)로 — 자체 중복 쿼리 제거
+  const [{ data: lotData }, procAll] = await Promise.all([
     supabase
       .from("lots")
       .select("process_id, side, weight, weight_before, locked")
       .eq("work_date", workDate),
-    supabase.from("processes").select("*").order("sort_order"),
+    getProcesses(),
   ]);
 
   // lots → 공정별 집계 (선택 작업일)
@@ -343,9 +344,7 @@ export default async function Home() {
   }
 
   // 분류: 부서(io 비검수) / 공정(work) / 검수(inspection), 각각 18K·14K
-  const procList = ((procData ?? []) as Process[]).filter(
-    (p) => p.schema_type !== "entry",
-  );
+  const procList = procAll.filter((p) => p.schema_type !== "entry");
   const dept = (k: Karat) =>
     procList.filter(
       (p) => p.schema_type === "io" && !p.is_inspection && p.karat === k,
@@ -401,13 +400,13 @@ export default async function Home() {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {pending.map(({ p, cnt }) => (
-                <Link
+                <ClientLink
                   key={p.id}
                   href={`/process/${p.id}`}
                   className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800"
                 >
                   {p.name} <b className="tabular-nums">{cnt}</b>건
-                </Link>
+                </ClientLink>
               ))}
             </div>
           </div>
@@ -419,7 +418,7 @@ export default async function Home() {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {errs.map(({ p, err }) => (
-                <Link
+                <ClientLink
                   key={p.id}
                   href={`/process/${p.id}`}
                   className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100 dark:border-rose-700 dark:bg-neutral-900 dark:text-rose-200 dark:hover:bg-neutral-800"
@@ -429,7 +428,7 @@ export default async function Home() {
                     {err > 0 ? "+" : ""}
                     {fmtWeight(err)}
                   </b>
-                </Link>
+                </ClientLink>
               ))}
             </div>
           </div>

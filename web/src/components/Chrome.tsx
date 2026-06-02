@@ -1,48 +1,42 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Printer, FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet } from "lucide-react";
 import { TabBar } from "@/components/TabBar";
 import { DateToggle } from "@/components/DateToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SessionGuard } from "@/components/SessionGuard";
+import { PrintModal } from "@/components/PrintModal";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import type { Process } from "@/lib/types";
 
-// 인쇄·결산서 — 상단 헤더(작업일↔테마 사이). 클릭 이동 + 호버 prefetch.
+// 인쇄(모달)·결산서 — 상단 헤더(작업일↔테마 사이).
 function HeaderNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const items = [
-    { href: "/print", label: "인쇄", Icon: Printer, active: pathname.startsWith("/print") },
-    { href: "/settlement", label: "결산서", Icon: FileSpreadsheet, active: pathname === "/settlement" },
-  ];
   return (
     <nav className="flex items-center gap-1">
-      {items.map(({ href, label, Icon, active }) => (
-        <Button
-          key={href}
-          type="button"
-          size="sm"
-          variant={active ? "secondary" : "ghost"}
-          onClick={() => router.push(href)}
-          onMouseEnter={() => router.prefetch(href)}
-          onFocus={() => router.prefetch(href)}
-        >
-          <Icon />
-          {label}
-        </Button>
-      ))}
+      <PrintModal />
+      <Button
+        type="button"
+        size="sm"
+        variant={pathname === "/settlement" ? "secondary" : "ghost"}
+        onClick={() => router.push("/settlement")}
+        onMouseEnter={() => router.prefetch("/settlement")}
+        onFocus={() => router.prefetch("/settlement")}
+      >
+        <FileSpreadsheet />결산서
+      </Button>
     </nav>
   );
 }
 
-// /login 에서는 헤더·탭바를 숨기고 본문만 렌더(로그인 화면 단독)
+// /login·인쇄 surface(/print/*)에서는 헤더·탭바를 숨기고 본문만 렌더(인쇄 미리보기는 모달 iframe으로 임베드)
 export function Chrome({ processes, children }: { processes: Process[]; children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") return <div className="flex-1">{children}</div>;
+  if (pathname === "/login" || pathname.startsWith("/print")) return <div className="flex-1">{children}</div>;
 
   return (
     <>

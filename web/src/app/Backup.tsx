@@ -62,10 +62,9 @@ export function Backup({
           선택 작업일 {fmtD(workDate)} · 전 공정 시트
         </span>
         <div className="flex items-center gap-1.5">
-          <Button asChild size="sm" variant="outline">
-            <a href={`/api/upload/export?date=${workDate}`}>
-              <Download />엑셀 백업
-            </a>
+          <Button size="sm" variant="outline"
+            onClick={() => { window.location.href = `/api/upload/export?date=${workDate}`; }}>
+            <Download />엑셀 백업
           </Button>
           <Button size="sm" variant="outline" disabled={pending} onClick={() => fileRef.current?.click()}>
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}

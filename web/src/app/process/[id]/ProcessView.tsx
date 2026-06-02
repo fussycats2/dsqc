@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
-import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
+import { fmtWeight, fmtInt, fmtKstDayTime, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NumberInput } from "@/components/NumberInput";
 import { focusNextInput } from "@/lib/enterNav";
@@ -22,6 +21,7 @@ import {
   DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClientLink } from "@/components/ClientLink";
 import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
   splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm, traceLot,
@@ -50,10 +50,7 @@ function ActionBtn({
 // ───────── 표시 헬퍼 (모듈 스코프 = 안정, 입력 포커스 유지) ─────────
 function fmtCell(v: unknown, kind: string): string {
   if (v === null || v === undefined || v === "") return "";
-  if (kind === "datetime") {                                   // 출고시간: 일 HH:MM (월 제거)
-    const s = String(v);
-    return `${s.slice(8, 10)} ${s.slice(11, 16)}`;
-  }
+  if (kind === "datetime") return fmtKstDayTime(v);            // 투입/이관·출고시간: KST '일 HH:MM'
   if (kind === "weight") return typeof v === "string" && v.includes(",") ? v : fmtWeight(v); // 원중량 집계 콤마결합은 그대로
   if (kind === "int") return fmtInt(v);
   return String(v);
@@ -864,7 +861,7 @@ export function ProcessView({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <Link href="/" className="text-sm text-slate-400 hover:text-slate-600">← 대시보드</Link>
+        <ClientLink href="/" className="text-sm text-slate-400 hover:text-slate-600">← 대시보드</ClientLink>
         <h1 className={`text-2xl font-bold tracking-tight ${process.karat === "14K" ? "text-blue-600 dark:text-blue-400" : ""}`}>
           {process.name}
         </h1>

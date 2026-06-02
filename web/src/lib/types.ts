@@ -183,6 +183,20 @@ export function fmtWeight(v: unknown): string {
   if (!Number.isFinite(n)) return "";
   return round2(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// 투입/이관·출고시간(moved_at, timestamptz=UTC) → KST '일 HH:MM' 표시.
+//  DB엔 UTC로 저장되므로 +9h 해서 한국 시각으로 보여줌(엑셀 백업도 KST라 일치).
+export function fmtKstDayTime(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "";
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) {
+    const s = String(v); // 비ISO 폴백(기존 슬라이스)
+    return `${s.slice(8, 10)} ${s.slice(11, 16)}`;
+  }
+  const k = new Date(d.getTime() + 9 * 3600 * 1000); // UTC → KST
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`;
+}
+
 // 천 단위 콤마 정수 (수량)
 export function fmtInt(v: unknown): string {
   if (v === null || v === undefined || v === "") return "";

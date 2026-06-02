@@ -261,8 +261,9 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           </Button>
           <Button size="sm" variant="outline" onClick={() => window.print()}><Printer />인쇄</Button>
           <span className="mx-1 text-slate-200 dark:text-neutral-700">|</span>
-          <Button asChild size="sm" variant="outline">
-            <a href={`/api/settlement/export?date=${workDate}`}><Download />엑셀 백업</a>
+          <Button size="sm" variant="outline"
+            onClick={() => { window.location.href = `/api/settlement/export?date=${workDate}`; }}>
+            <Download />엑셀 백업
           </Button>
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={pending}>
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}엑셀 가져오기

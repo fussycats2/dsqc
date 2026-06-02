@@ -155,8 +155,17 @@ export async function fillUploadXlsm(
     if (!g) { g = { schema: p.schema_type, in: [], out: [] }; groups.set(key, g); }
     (lot.side === "in" ? g.in : g.out).push(lot);
   }
+  // 정렬: 전송 순서 보존 — 같은 created_at(일괄 전송)은 **일련번호 끝 숫자(전송 순번)** 로.
+  //  기존엔 id(UUID)로만 타이브레이크해서 일괄 전송 행 순서가 뒤죽박죽됐음.
+  const serialSeq = (s: string | null) => {
+    const m = String(s ?? "").match(/(\d+)\D*$/); // 끝의 숫자 그룹 (M_260601_003→3, 분할 -2 등)
+    return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+  };
   const sorter = (a: Lot, b: Lot) =>
-    (a.created_at ?? "").localeCompare(b.created_at ?? "") || a.id.localeCompare(b.id);
+    (a.created_at ?? "").localeCompare(b.created_at ?? "")
+    || serialSeq(a.serial) - serialSeq(b.serial)
+    || (a.serial ?? "").localeCompare(b.serial ?? "")
+    || a.id.localeCompare(b.id);
   for (const [name, g] of groups) {
     const sp = sheets.get(name);
     if (!sp) continue; // 시트 없는 공정은 건너뜀

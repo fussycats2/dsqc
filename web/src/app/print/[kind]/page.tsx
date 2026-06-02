@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkDate } from "@/lib/workDate";
 import {
-  COLUMNS, fmtWeight, fmtInt, shipWeight, lossOf, lossRateOf,
+  COLUMNS, fmtWeight, fmtInt, fmtKstDayTime, shipWeight, lossOf, lossRateOf,
   type ColDef, type Lot,
 } from "@/lib/types";
 import { PRINT_KINDS, STOCK_GROUPS, type PrintKind } from "@/lib/printSets";
@@ -15,7 +15,7 @@ function cellText(r: Lot, c: ColDef): string {
   if (c.computed === "lossRate") { const x = lossRateOf(r); return x == null ? "" : (x * 100).toFixed(1) + "%"; }
   const v = r[c.key];
   if (v == null || v === "") return "";
-  if (c.kind === "datetime") { const s = String(v); return `${s.slice(8, 10)} ${s.slice(11, 16)}`; }
+  if (c.kind === "datetime") return fmtKstDayTime(v);
   if (c.kind === "weight") return typeof v === "string" && v.includes(",") ? v : fmtWeight(v); // 원중량 집계 콤마결합은 그대로
   if (c.kind === "int") return fmtInt(v);
   return String(v);
@@ -89,10 +89,11 @@ export default async function PrintKindPage({
   params, searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ group?: string }>;
+  searchParams: Promise<{ group?: string; embed?: string; print?: string }>;
 }) {
   const { kind } = await params;
-  const { group = "all" } = await searchParams;
+  const { group = "all", embed, print } = await searchParams;
+  const isPrintPopup = print === "1";
   const workDate = await getWorkDate();
   const supabase = await createClient();
 
@@ -135,7 +136,7 @@ export default async function PrintKindPage({
   const rowsOf = (procId?: string) => (procId ? lots.filter((l) => l.process_id === procId) : []);
 
   return (
-    <PrintShell title={title} workDate={workDate} groups={groups} currentGroup={kind === "stock" ? group : undefined}>
+    <PrintShell title={title} workDate={workDate} groups={groups} currentGroup={kind === "stock" ? group : undefined} embed={embed === "1" || isPrintPopup} autoPrint={isPrintPopup}>
       {blocks.map((b, bi) => (
         <div key={bi} style={bi > 0 && paged ? { breakBefore: "page" } : undefined}>
           {b.heading && <h2 className={`mb-1 mt-2 text-base font-bold ${b.heading.includes("14K") ? "text-blue-600" : ""}`}>{b.heading}</h2>}
