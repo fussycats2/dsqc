@@ -69,26 +69,29 @@ async function readUnlocked(
   return { rows: (data ?? []) as LotRow[], error };
 }
 
-// ───────── 보내기 (작성 → io/검수 입고): 일련번호 최초 생성 ─────────
+// ───────── 보내기 (작성 → io 입고/출고): Module2 AskInboundMode ─────────
+//  · 입고(side=in, A:I): 일련번호 최초 생성(약자_YYMMDD_001)
+//  · 출고(side=out, L:U): 일련번호 없음(엑셀 L열 "신규"), 중량→실중량(O) 매핑
 export async function sendRows(
   sourceProcessId: string,
   targetProcessId: string,
   rows: EntryRow[],
+  side: "in" | "out" = "in",
 ) {
   const supabase = await createClient();
   const valid = rows.filter((r) => r.description?.trim() || r.qty || r.weight || r.tag);
   if (valid.length === 0) return { error: "입력된 행이 없습니다." };
 
   const wd = await getWorkDate(); // 새 입력은 현재 작업일에 귀속
-  const row = (r: EntryRow, serial: string) => ({
+  const row = (r: EntryRow, serial: string | null) => ({
     serial,
     process_id: targetProcessId,
-    side: "in",
+    side,
     status: "작업중",
     prev_process_id: sourceProcessId,
     description: toStr(r.description),
     qty: toNum(r.qty),
-    weight: toNum(r.weight), // 중량
+    weight: toNum(r.weight), // 입고=중량(D) / 출고=실중량(O)
     tag: toNum(r.tag),
     q: toNum(r.q),
     due_date: toStr(r.due_date),
@@ -96,6 +99,14 @@ export async function sendRows(
     note: toStr(r.note),
     work_date: wd,
   });
+
+  // 출고: 일련번호 발번 없이 바로 삽입(엑셀은 L열 "신규" 표기, 번호 생성 안 함)
+  if (side === "out") {
+    const { error } = await supabase.from("lots").insert(valid.map((r) => row(r, null)));
+    if (error) return { error: error.message };
+    revalidatePath(`/process/${targetProcessId}`);
+    return { ok: true, sent: valid.length };
+  }
 
   // 빠른 경로: 일련번호 N개를 1콜로 발번 (next_serials RPC, migration 0012).
   //  PostgREST의 setof text 응답 형태(스칼라 배열 ["S1",..] / 객체 배열 [{...:"S1"},..]) 모두 수용.

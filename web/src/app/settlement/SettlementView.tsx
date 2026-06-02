@@ -2,7 +2,13 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Download, Loader2, Printer, Save, Send, Upload } from "lucide-react";
 import { fmtWeight } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
 import { saveSettlement, carrySettlement, moveSettlement, pushFromLots } from "./settlementActions";
 
@@ -247,14 +253,20 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h1 className="text-xl font-bold tracking-tight">결산서 <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span></h1>
         <div className="flex items-center gap-2">
-          <button onClick={doPush} disabled={pending} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">결산전송</button>
-          <button onClick={doSave} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">저장</button>
-          <button onClick={() => window.print()} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">인쇄</button>
+          <Button size="sm" onClick={doPush} disabled={pending} className="bg-indigo-600 text-white hover:bg-indigo-700">
+            {pending ? <Loader2 className="animate-spin" /> : <Send />}결산전송
+          </Button>
+          <Button size="sm" onClick={doSave} disabled={pending} className="bg-[#4b3526] text-white hover:bg-[#3a281c]">
+            {pending ? <Loader2 className="animate-spin" /> : <Save />}저장
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.print()}><Printer />인쇄</Button>
           <span className="mx-1 text-slate-200 dark:text-neutral-700">|</span>
-          <a href={`/api/settlement/export?date=${workDate}`}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">📥 엑셀 백업</a>
-          <button onClick={() => fileRef.current?.click()} disabled={pending}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">📤 엑셀 가져오기</button>
+          <Button asChild size="sm" variant="outline">
+            <a href={`/api/settlement/export?date=${workDate}`}><Download />엑셀 백업</a>
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={pending}>
+            {pending ? <Loader2 className="animate-spin" /> : <Upload />}엑셀 가져오기
+          </Button>
           <input ref={fileRef} type="file" accept=".xlsm,.xlsx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportFile(f); e.target.value = ""; }} />
         </div>
@@ -268,7 +280,9 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
           <input type="date" value={carry} onChange={(e) => setCarry(e.target.value)} className={dateInputCls} />
-          <button onClick={doCarry} disabled={pending} className="rounded-md bg-[#4b3526] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">마감·이월</button>
+          <Button size="sm" className="bg-[#4b3526] text-white hover:bg-[#3a281c]" onClick={doCarry} disabled={pending}>
+            {pending && <Loader2 className="animate-spin" />}마감·이월
+          </Button>
         </div>
         <span className="text-slate-200 dark:text-neutral-700">|</span>
         <span className="text-sm font-semibold">🔁 날짜 변경</span>
@@ -276,7 +290,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
           <span className="text-slate-300">→</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={dateInputCls} />
-          <button onClick={doMove} disabled={pending} className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800">변경</button>
+          <Button size="sm" variant="outline" onClick={doMove} disabled={pending}>변경</Button>
         </div>
         {msg && <span className="text-xs text-slate-500 dark:text-neutral-400">{msg}</span>}
       </section>
@@ -300,20 +314,23 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         </div>
       </div>
 
-      {confirmBox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 print:hidden" onClick={() => setConfirmBox(null)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-neutral-800 dark:ring-neutral-700" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-base font-bold">{confirmBox.title}</h3>
-            <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-neutral-300">{confirmBox.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
-            <div className="flex items-center justify-end gap-2">
-              {!confirmBox.infoOnly && (
-                <button onClick={() => setConfirmBox(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-              )}
-              <button disabled={pending} onClick={() => { const fn = confirmBox.onYes; setConfirmBox(null); fn(); }} className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c] disabled:opacity-50">{confirmBox.yesLabel}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={!!confirmBox} onOpenChange={(o) => { if (!o) setConfirmBox(null); }}>
+        <AlertDialogContent className="print:hidden">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmBox?.title}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1">{confirmBox?.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {!confirmBox?.infoOnly && <AlertDialogCancel>취소</AlertDialogCancel>}
+            <AlertDialogAction className="bg-[#4b3526] text-white hover:bg-[#3a281c]"
+              onClick={() => { const fn = confirmBox?.onYes; fn?.(); }}>
+              {confirmBox?.yesLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

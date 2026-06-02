@@ -2,6 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Download, Loader2, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { SchemaType } from "@/lib/types";
 
 const fmtD = (s: string) => s.replaceAll("-", "/");
@@ -56,19 +62,15 @@ export function Backup({
           선택 작업일 {fmtD(workDate)} · 전 공정 시트
         </span>
         <div className="flex items-center gap-1.5">
-          <a
-            href={`/api/upload/export?date=${workDate}`}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
-          >
-            📥 엑셀 백업
-          </a>
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={pending}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800"
-          >
-            {pending ? "가져오는 중…" : "📤 엑셀 가져오기"}
-          </button>
+          <Button asChild size="sm" variant="outline">
+            <a href={`/api/upload/export?date=${workDate}`}>
+              <Download />엑셀 백업
+            </a>
+          </Button>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => fileRef.current?.click()}>
+            {pending ? <Loader2 className="animate-spin" /> : <Upload />}
+            {pending ? "가져오는 중…" : "엑셀 가져오기"}
+          </Button>
           <input
             ref={fileRef}
             type="file"
@@ -86,29 +88,19 @@ export function Backup({
         </span>
       </div>
 
-      {box && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={() => setBox(null)}>
-          <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-neutral-800 dark:ring-neutral-700"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-3 text-base font-bold">{box.title}</h3>
-            <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-neutral-300">
-              {box.lines.map((l, i) => (
-                <p key={i}>{l}</p>
-              ))}
-            </div>
-            <div className="flex items-center justify-end">
-              <button
-                onClick={() => setBox(null)}
-                className="rounded-lg bg-[#4b3526] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a281c]"
-              >
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={!!box} onOpenChange={(o) => { if (!o) setBox(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{box?.title}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1">{box?.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="bg-[#4b3526] text-white hover:bg-[#3a281c]">확인</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

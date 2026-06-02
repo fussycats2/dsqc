@@ -18,31 +18,6 @@ interface Agg {
 }
 const EMPTY: Agg = { inW: 0, outW: 0, stock: 0, lossW: 0, outUnlocked: 0 };
 
-// ───────── KPI 요약 카드 (한 줄: 라벨 왼쪽 · 값 오른쪽) ─────────
-function Kpi({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent: string;
-}) {
-  return (
-    <div className="flex min-w-[160px] flex-1 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-      <div className="flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 rounded-full ${accent}`} />
-        <span className="text-xs text-slate-500 dark:text-neutral-400">
-          {label}
-        </span>
-      </div>
-      <div className="text-xl font-bold tabular-nums tracking-tight">
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function NameLink({ p }: { p: Process }) {
   const blue = p.karat === "14K";
   return (
@@ -409,31 +384,16 @@ export default async function Home() {
         </p>
       </div>
 
-      {/* 일마감 + 날짜 변경 (스티키 아님) */}
-      <DayClose workDate={workDate} />
+      {/* 일마감 + 날짜 변경 (18K·14K 재고는 이 박스 오른쪽에 표시) */}
+      <DayClose
+        workDate={workDate}
+        stock18={fmtWeight(sumStock(work("18K")))}
+        stock14={fmtWeight(sumStock(work("14K")))}
+      />
 
-      {/* KPI(18K 재고 라인) + 미출고 알림 — 전역 헤더(49px) 아래 sticky 고정 */}
-      {/* -mt-3: 위 일마감 박스와의 간격을 다른 박스들처럼 ~20px로 좁힘(py-3 만큼 당김) */}
-      <div className="sticky top-[49px] z-10 -mx-6 -mt-3 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
-        <div className="flex flex-wrap gap-3">
-          <Kpi
-            label="18K 재고"
-            accent="bg-rose-500"
-            value={fmtWeight(sumStock(work("18K")))}
-          />
-          <Kpi
-            label="14K 재고"
-            accent="bg-blue-500"
-            value={fmtWeight(sumStock(work("14K")))}
-          />
-          <Kpi
-            label="작업완료 후 미출고"
-            accent={
-              pendingTotal ? "bg-amber-500" : "bg-slate-300 dark:bg-neutral-600"
-            }
-            value={`${pendingTotal}건`}
-          />
-        </div>
+      {/* 알림(미출고·중량오차)만 sticky 고정 — 알림이 있을 때만 렌더. 위 일마감 박스와 간격은 -mt-2로 좁힘 */}
+      {(pendingTotal > 0 || errs.length > 0) && (
+      <div className="sticky top-[49px] z-10 -mx-6 -mt-2 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
         {pendingTotal > 0 && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
@@ -475,6 +435,7 @@ export default async function Home() {
           </div>
         )}
       </div>
+      )}
 
       <Section title="공정 (연마·뻥·빠우)">
         <ProcessCard

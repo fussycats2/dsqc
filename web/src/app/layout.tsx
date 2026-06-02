@@ -4,11 +4,11 @@ import "./globals.css";
 import { Chrome } from "@/components/Chrome";
 import { getProcesses } from "@/lib/getProcesses";
 
-// 첫 페인트 전에 저장된 테마 적용(깜빡임 방지)
+// 첫 페인트 전에 저장된 테마 적용(깜빡임 방지). 다크 on/off만 — system 폐기.
 const themeScript = `
-(function(){try{var t=localStorage.getItem('dsqc.theme')||'light';
-var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);
-document.documentElement.classList.toggle('dark',d);}catch(e){}})();
+(function(){try{
+document.documentElement.classList.toggle('dark',localStorage.getItem('dsqc.theme')==='dark');
+}catch(e){}})();
 `;
 
 const geistSans = Geist({

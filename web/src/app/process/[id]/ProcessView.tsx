@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { ChevronDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
 import { fmtWeight, fmtInt, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { NumberInput } from "@/components/NumberInput";
 import { focusNextInput } from "@/lib/enterNav";
 import { Button } from "@/components/ui/button";
@@ -11,12 +14,38 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
   splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm, traceLot,
 } from "./actions";
 
 type ActionResult = { error?: string } & Record<string, unknown>;
 type Side = "in" | "out";
+
+// 색 버튼 톤 → shadcn Button className (tailwind-merge가 bg/text 충돌 해소)
+const TONE: Record<string, string> = {
+  default: "bg-slate-700 text-white hover:bg-slate-800",
+  primary: "bg-teal-600 text-white hover:bg-teal-700",
+  indigo: "bg-indigo-600 text-white hover:bg-indigo-700",
+  rose: "bg-rose-600 text-white hover:bg-rose-700",
+  amber: "bg-amber-500 text-white hover:bg-amber-600",
+};
+type Tone = keyof typeof TONE | "ghost";
+function ActionBtn({
+  tone = "default", className, ...props
+}: React.ComponentProps<typeof Button> & { tone?: Tone }) {
+  if (tone === "ghost")
+    return <Button size="sm" variant="outline" className={className} {...props} />;
+  return <Button size="sm" className={cn(TONE[tone], className)} {...props} />;
+}
 
 // ───────── 표시 헬퍼 (모듈 스코프 = 안정, 입력 포커스 유지) ─────────
 function fmtCell(v: unknown, kind: string): string {
@@ -305,19 +334,14 @@ function EditPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-[1100px] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-bold">✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></h3>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs dark:border-neutral-600">취소</button>
-            <button onClick={save} disabled={pending}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">저장</button>
-          </div>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1100px]" onKeyDown={focusNextInput}>
+        <DialogHeader>
+          <DialogTitle>✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></DialogTitle>
+          <DialogDescription className="sr-only">선택한 행의 값을 수정합니다.</DialogDescription>
+        </DialogHeader>
         {/* 칸 폭을 원본 표 열폭(c.width)에 맞추고 한 줄로 흐르게 배치 — 표와 동일한 감각 */}
-        <div className="flex flex-wrap items-end gap-x-2 gap-y-2" onKeyDown={focusNextInput}>
+        <div className="flex flex-wrap items-end gap-x-2 gap-y-2">
         {fields.map((c) => {
           const key = c.key as string;
           const cls = "w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
@@ -337,7 +361,7 @@ function EditPanel({
         </div>
         {/* 자동 계산 미리보기 — 수정값 기준 (출고중량 / 로스 / 로스율) */}
         {computedCols.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-neutral-800">
+          <div className="mt-1 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-neutral-800">
             {computedCols.map((c, i) => (
               <div key={i} className="rounded-lg bg-slate-50 px-3 py-1.5 text-sm dark:bg-neutral-800">
                 <span className="text-[11px] text-slate-400">{c.label}</span>{" "}
@@ -346,8 +370,14 @@ function EditPanel({
             ))}
           </div>
         )}
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>취소</Button>
+          <Button onClick={save} disabled={pending} className="bg-blue-600 text-white hover:bg-blue-700">
+            {pending && <Loader2 className="animate-spin" />}저장
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -384,13 +414,12 @@ function SplitModal({
   const inp = "w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-bold">나누기</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl" onKeyDown={focusNextInput}>
+        <DialogHeader>
+          <DialogTitle>나누기</DialogTitle>
+          <DialogDescription className="sr-only">선택한 행을 여러 행으로 나눕니다. 수량·중량 합이 원본과 같아야 합니다.</DialogDescription>
+        </DialogHeader>
         {/* 원본 */}
         <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-neutral-800">
           <div className="text-xs text-slate-400">원래 내역</div>
@@ -429,13 +458,14 @@ function SplitModal({
             중량 합 {fmtWeight(wSum)} / {fmtWeight(origWeight)}{wRemain != null && wRemain !== 0 ? ` (잔여 ${fmtWeight(wRemain)})` : ""}
           </div>
         </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-          <button onClick={save} disabled={!canSave}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">나누기 저장</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose}>취소</Button>
+          <Button onClick={save} disabled={!canSave} className="bg-amber-500 text-white hover:bg-amber-600">
+            {pending && <Loader2 className="animate-spin" />}나누기 저장
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -484,7 +514,9 @@ function CompleteModal({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>취소</Button>
           <Button onClick={() => onConfirm(a)} disabled={pending}
-            className="bg-teal-600 text-white hover:bg-teal-700">집계 완료</Button>
+            className="bg-teal-600 text-white hover:bg-teal-700">
+            {pending && <Loader2 className="animate-spin" />}집계 완료
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -509,14 +541,13 @@ function TagAdjustModal({
   const inp = "w-24 rounded-md border border-slate-200 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-bold">Tag 보정 <span className="text-sm font-normal text-slate-400">· 잔여 Tag 수량 입력</span></h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
-        <table className="w-full text-sm" onKeyDown={focusNextInput}>
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl" onKeyDown={focusNextInput}>
+        <DialogHeader>
+          <DialogTitle>Tag 보정 <span className="text-sm font-normal text-slate-400">· 잔여 Tag 수량 입력</span></DialogTitle>
+          <DialogDescription className="sr-only">출고행별 잔여 Tag 수량을 입력해 Tag중량·Tag로스·출고중량을 보정합니다.</DialogDescription>
+        </DialogHeader>
+        <table className="w-full text-sm">
           <thead>
             <tr className="text-[11px] text-slate-400">
               <th className="px-2 py-1 text-left">일련번호</th>
@@ -552,14 +583,16 @@ function TagAdjustModal({
             })}
           </tbody>
         </table>
-        <div className="mt-4 flex items-center justify-end gap-2">
+        <DialogFooter className="mt-4 sm:items-center">
           <span className="mr-auto text-xs text-slate-400">{items.length}/{rows.length}건 입력됨</span>
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-          <button onClick={() => onConfirm(items)} disabled={pending || items.length === 0}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">보정 적용</button>
-        </div>
-      </div>
-    </div>
+          <Button variant="outline" onClick={onClose}>취소</Button>
+          <Button onClick={() => onConfirm(items)} disabled={pending || items.length === 0}
+            className="bg-indigo-600 text-white hover:bg-indigo-700">
+            {pending && <Loader2 className="animate-spin" />}보정 적용
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -593,18 +626,23 @@ function GenealogyModal({
   const rootSerial = trace ? nodes.find((n) => n.id === trace.rootId)?.serial : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl dark:bg-neutral-900"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-bold">🧬 계보 추적
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>🧬 계보 추적
             {rootSerial && <span className="ml-1 font-normal text-slate-400">· {rootSerial}</span>}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
+          </DialogTitle>
+          <DialogDescription className="sr-only">선택한 일련번호가 거쳐온/거쳐갈 공정 흐름입니다.</DialogDescription>
+        </DialogHeader>
 
         {loading ? (
-          <p className="py-10 text-center text-sm text-slate-400">불러오는 중…</p>
+          <div className="space-y-2 py-2">
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="mx-4 h-4 w-24 rounded-full" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="mx-4 h-4 w-24 rounded-full" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </div>
         ) : nodes.length <= 1 ? (
           <p className="py-10 text-center text-sm text-slate-400">
             연결된 이전·이후 공정 기록이 없습니다.<br />
@@ -656,50 +694,33 @@ function GenealogyModal({
             })}
           </ol>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-// ───────── 버튼 ─────────
-function Btn({
-  children, onClick, disabled, tone = "default",
-}: {
-  children: React.ReactNode; onClick: () => void; disabled?: boolean;
-  tone?: "default" | "primary" | "indigo" | "rose" | "amber" | "ghost";
-}) {
-  const tones: Record<string, string> = {
-    default: "bg-slate-700 text-white hover:bg-slate-800",
-    primary: "bg-teal-600 text-white hover:bg-teal-700",
-    indigo: "bg-indigo-600 text-white hover:bg-indigo-700",
-    rose: "bg-rose-600 text-white hover:bg-rose-700",
-    amber: "bg-amber-500 text-white hover:bg-amber-600",
-    ghost: "border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
-  };
-  return (
-    <button onClick={onClick} disabled={disabled}
-      className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}>
-      {children}
-    </button>
-  );
-}
-
+// ───────── 대상 선택 액션 (버튼 클릭 → 대상 메뉴 → 선택 즉시 실행) ─────────
 function TargetAction({
   label, tone, targets, disabled, onRun,
 }: {
-  label: string; tone: "indigo" | "rose" | "amber" | "primary" | "default";
+  label: string; tone: Tone;
   targets: Process[]; disabled: boolean; onRun: (targetId: string) => void;
 }) {
-  const [tid, setTid] = useState(targets[0]?.id ?? "");
   if (targets.length === 0) return null;
   return (
-    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
-      <select value={tid} onChange={(e) => setTid(e.target.value)}
-        className="max-w-[120px] rounded-md bg-white px-2 py-1 text-xs dark:bg-neutral-900">
-        {targets.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <Btn tone={tone} disabled={disabled || !tid} onClick={() => onRun(tid)}>{label}</Btn>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <ActionBtn tone={tone} disabled={disabled}>{label}<ChevronDown /></ActionBtn>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[60vh] overflow-y-auto">
+        <DropdownMenuLabel>{label} 대상</DropdownMenuLabel>
+        {targets.map((t) => (
+          <DropdownMenuItem key={t.id} onSelect={() => onRun(t.id)}>
+            {t.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -724,12 +745,10 @@ export function ProcessView({
   const [traceLoading, setTraceLoading] = useState(false);
   const [pending, start] = useTransition();
 
-  // 토스트 + 확인 토스트
-  const [toast, setToast] = useState<{ kind: "ok" | "err" | "info"; text: string; id: number } | null>(null);
+  // 확인 모달(AlertDialog) 상태 — 알림은 sonner toast()로 직접 호출
   const [confirmBox, setConfirmBox] = useState<
     { text: string; onYes: () => void; yesLabel?: string; altLabel?: string; onAlt?: () => void } | null
   >(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 표 헤더 sticky 위치 = 전역헤더(49px) + 액션 툴바 실측 높이.
   // 툴바가 1~2줄로 감겨 높이가 달라져도 겹치지 않게 런타임 측정(데스크톱 전용).
@@ -746,13 +765,7 @@ export function ProcessView({
   }, []);
 
   const notify = (kind: "ok" | "err" | "info", text: string) =>
-    setToast({ kind, text, id: Date.now() });
-  useEffect(() => {
-    if (!toast) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(null), 3200);
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [toast]);
+    kind === "err" ? toast.error(text) : kind === "ok" ? toast.success(text) : toast.message(text);
 
   const workTargets = useMemo(
     () => allProcesses.filter((p) => p.schema_type === "work" && p.karat === process.karat),
@@ -866,6 +879,11 @@ export function ProcessView({
           <span className="text-xs text-slate-400">
             선택 {isWork ? "작업중" : "입고"} <b className="text-slate-600 dark:text-neutral-200">{nIn}</b> · {isWork ? "완료" : "출고"} <b className="text-slate-600 dark:text-neutral-200">{nOut}</b>
           </span>
+          {pending && (
+            <span className="flex items-center gap-1 text-xs text-slate-400">
+              <Loader2 className="size-3.5 animate-spin" />처리 중…
+            </span>
+          )}
           {selWeight > 0 && (
             <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
               선택 중량 합 {fmtWeight(selWeight)}
@@ -875,17 +893,17 @@ export function ProcessView({
 
           {isWork ? (
             <>
-              <Btn tone="primary" disabled={pending || nIn === 0 || hasLocked}
+              <ActionBtn tone="primary" disabled={pending || nIn === 0 || hasLocked}
                 onClick={() => setCompleteOpen(true)}>
                 작업완료(집계)
-              </Btn>
+              </ActionBtn>
             </>
           ) : (
             <>
-              <TargetAction label="투입 →" tone="indigo" targets={workTargets} disabled={pending || nIn === 0 || hasLocked}
-                onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 투입`)} />
-              <TargetAction label="타부서투입 →" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0 || hasLocked}
-                onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서투입`)} />
+              <TargetAction label="공정투입" tone="indigo" targets={workTargets} disabled={pending || nIn === 0 || hasLocked}
+                onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 공정투입`)} />
+              <TargetAction label="타부서출고" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0 || hasLocked}
+                onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서출고`)} />
             </>
           )}
           {/* 나누기 (작업중/입고 단건) */}
@@ -893,8 +911,8 @@ export function ProcessView({
             <input type="number" min={2} value={splitN}
               onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))}
               className="w-12 rounded-md bg-white px-1.5 py-1 text-right text-xs dark:bg-neutral-900" />
-            <Btn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
-              onClick={() => setSplitRowId(inIds[0])}>나누기</Btn>
+            <ActionBtn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
+              onClick={() => setSplitRowId(inIds[0])}>나누기</ActionBtn>
           </div>
           {/* 목표중량 조합 찾기 (공정 전용) */}
           {isWork && (
@@ -909,51 +927,51 @@ export function ProcessView({
                   if (target !== "" && !isNaN(n)) setTarget(fmtWeight(n));
                 }}
                 className="w-24 rounded-md bg-white px-2 py-1 text-center text-xs tabular-nums dark:bg-neutral-900" />
-              <Btn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</Btn>
+              <ActionBtn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</ActionBtn>
             </div>
           )}
-          <Btn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
+          <ActionBtn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
             onClick={() => askConfirm(`${isWork ? "작업중" : "입고"} ${nIn}건을 삭제할까요?`,
               () => run(() => deleteLots(process.id, inIds), (r) => `${r.deleted}건 삭제`))}>
             {isWork ? "작업중 삭제" : "입고 삭제"}
-          </Btn>
+          </ActionBtn>
 
           <span className="text-slate-200 dark:text-neutral-700">|</span>
 
           {isWork ? (
             <>
-              <TargetAction label="이관 →" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="이관" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 이관`)} />
-              <TargetAction label="현장출고 →" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
-              <TargetAction label="검수출고 →" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="검수출고" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
             </>
           ) : (
             <>
-              <Btn tone="indigo" disabled={pending || nOut === 0 || hasLocked}
+              <ActionBtn tone="indigo" disabled={pending || nOut === 0 || hasLocked}
                 onClick={() => setTagAdjustOpen(true)}>
                 Tag 보정
-              </Btn>
+              </ActionBtn>
               {process.is_inspection && (
-                <Btn tone="default" disabled={pending}
+                <ActionBtn tone="default" disabled={pending}
                   onClick={() => run(() => tagConfirm(process.id), (r) => `Tag 확정 ${r.filled}건`)}>
                   Tag 확정
-                </Btn>
+                </ActionBtn>
               )}
             </>
           )}
-          <Btn tone="ghost" disabled={pending || nOut === 0 || hasLocked}
+          <ActionBtn tone="ghost" disabled={pending || nOut === 0 || hasLocked}
             onClick={() => askConfirm(`${isWork ? "완료" : "출고"} ${nOut}건을 삭제할까요?`,
               () => run(() => deleteLots(process.id, outIds), (r) => `${r.deleted}건 삭제`))}>
             {isWork ? "완료 삭제" : "출고 삭제"}
-          </Btn>
+          </ActionBtn>
 
           {/* 수정 + 잠금행 해제·삭제 (맨 오른쪽) */}
           <div className="ml-auto flex items-center gap-2">
-            <Btn tone="default" disabled={pending || nIn + nOut !== 1}
-              onClick={() => setEditId(inIds[0] ?? outIds[0])}>✏️ 수정</Btn>
-            <Btn tone="rose" disabled={pending || selectedLocked.length === 0}
+            <ActionBtn tone="default" disabled={pending || nIn + nOut !== 1}
+              onClick={() => setEditId(inIds[0] ?? outIds[0])}>✏️ 수정</ActionBtn>
+            <ActionBtn tone="rose" disabled={pending || selectedLocked.length === 0}
               onClick={() => setConfirmBox({
                 text: `잠긴 ${selectedLocked.length}건을 어떻게 할까요?`,
                 altLabel: "잠금 해제",
@@ -962,7 +980,7 @@ export function ProcessView({
                 onYes: () => run(() => deleteLots(process.id, selectedLocked), (r) => `잠금행 ${r.deleted}건 삭제`),
               })}>
               🔓 잠금 해제·삭제
-            </Btn>
+            </ActionBtn>
           </div>
         </div>
 
@@ -1045,39 +1063,32 @@ export function ProcessView({
         <GenealogyModal trace={trace} loading={traceLoading} onClose={() => setTraceOpen(false)} />
       )}
 
-      {/* 토스트 (화면 정중앙, 크게) */}
-      {toast && (
-        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
-          <div className={`rounded-2xl px-8 py-5 text-lg font-medium shadow-2xl ${
-            toast.kind === "err" ? "bg-rose-600 text-white"
-              : toast.kind === "ok" ? "bg-emerald-600 text-white"
-                : "bg-slate-800 text-white"}`}>
-            {toast.text}
-          </div>
-        </div>
-      )}
-      {/* 확인 (화면 정중앙) */}
-      {confirmBox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
-          onClick={() => setConfirmBox(null)}>
-          <div className="rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-200 dark:bg-neutral-800 dark:ring-neutral-700"
-            onClick={(e) => e.stopPropagation()}>
-            <p className="mb-4 text-base">{confirmBox.text}</p>
-            <div className="flex items-center gap-2">
-              {confirmBox.onAlt && (
-                <button onClick={() => { const f = confirmBox.onAlt!; setConfirmBox(null); f(); }}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white">
-                  {confirmBox.altLabel ?? "잠금 해제"}
-                </button>
-              )}
-              <button onClick={() => setConfirmBox(null)}
-                className="ml-auto rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-neutral-600">취소</button>
-              <button onClick={() => { const f = confirmBox.onYes; setConfirmBox(null); f(); }}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white">{confirmBox.yesLabel ?? "확인"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 확인 모달 (AlertDialog) */}
+      <AlertDialog open={!!confirmBox} onOpenChange={(o) => { if (!o) setConfirmBox(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>확인</AlertDialogTitle>
+            <AlertDialogDescription>{confirmBox?.text}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {confirmBox?.onAlt && (
+              <Button
+                className="bg-indigo-600 text-white hover:bg-indigo-700 sm:mr-auto"
+                onClick={() => { const f = confirmBox.onAlt!; setConfirmBox(null); f(); }}
+              >
+                {confirmBox.altLabel ?? "잠금 해제"}
+              </Button>
+            )}
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => { const f = confirmBox?.onYes; f?.(); }}
+            >
+              {confirmBox?.yesLabel ?? "확인"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

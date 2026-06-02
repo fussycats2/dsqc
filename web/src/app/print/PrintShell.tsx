@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeft, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // 인쇄 뷰 공용 셸 — 상단 툴바(인쇄 숨김) + 본문(인쇄 영역, 페이지 폭으로 제한)
 export function PrintShell({
@@ -18,21 +20,21 @@ export function PrintShell({
       <style dangerouslySetInnerHTML={{ __html: "@media print{@page{size:A4 portrait;margin:10mm 8mm}}" }} />
       {/* 툴바 (인쇄 시 숨김) */}
       <div className="mx-auto mb-3 flex max-w-[880px] flex-wrap items-center gap-2 print:hidden">
-        <Link href="/print" className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800">← 인쇄 메뉴</Link>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/print"><ArrowLeft />인쇄 메뉴</Link>
+        </Button>
         {groups && (
           <div className="flex flex-wrap gap-1">
             {groups.map((g) => (
-              <Link key={g.key} href={`/print/stock?group=${g.key}`}
-                className={`rounded-md border px-2.5 py-1 text-xs ${currentGroup === g.key ? "border-transparent bg-slate-700 text-white" : "border-slate-300 hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800"}`}>
-                {g.label}
-              </Link>
+              <Button key={g.key} asChild size="sm" variant={currentGroup === g.key ? "secondary" : "outline"}>
+                <Link href={`/print/stock?group=${g.key}`}>{g.label}</Link>
+              </Button>
             ))}
           </div>
         )}
-        <button onClick={() => window.print()}
-          className="ml-auto rounded-md bg-[#4b3526] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#3a281c]">
-          🖨 인쇄
-        </button>
+        <Button size="sm" className="ml-auto bg-[#4b3526] text-white hover:bg-[#3a281c]" onClick={() => window.print()}>
+          <Printer />인쇄
+        </Button>
       </div>
 
       {/* 인쇄 영역 — A4 폭으로 제한·중앙정렬 (화면 프리뷰도 페이지처럼) */}
