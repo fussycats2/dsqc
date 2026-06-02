@@ -69,6 +69,58 @@ function setCell(xml: string, ref: string, value: number | string): string {
   });
 }
 
+// 셀 스타일(s)만 교체(값·수식·타입 보존) — 완료(잠금) 행 색칠용.
+function recolorCell(xml: string, ref: string, colorize: (origS: number) => number): string {
+  const re = new RegExp(`<c r="${ref}"([^>]*?)(/>|>)`);
+  return xml.replace(re, (_m, attrs: string, close: string) => {
+    const sm = /\ss="(\d+)"/.exec(attrs);
+    const newS = colorize(sm ? Number(sm[1]) : 0);
+    const newAttrs = sm ? attrs.replace(/\ss="\d+"/, ` s="${newS}"`) : `${attrs} s="${newS}"`;
+    return `<c r="${ref}"${newAttrs}${close}`;
+  });
+}
+
+// 완료(잠금) 셀 색칠기 — styles.xml에 옅은 노란 fill 1개 추가 + (원본스타일+노란fill) 파생 cellXf를 lazy 생성.
+//  원본 셀의 숫자서식·테두리·폰트는 그대로 두고 채우기만 노란색으로(스타일 인덱스만 바꿔치기).
+//  styles 구조가 예상과 다르면 색칠 비활성(원본 그대로 반환)해서 안전.
+function makeColorizer(stylesXml: string) {
+  const fillsM = /<fills count="(\d+)"\s*>([\s\S]*?)<\/fills>/.exec(stylesXml);
+  const xfsM = /<cellXfs count="(\d+)"\s*>([\s\S]*?)<\/cellXfs>/.exec(stylesXml);
+  if (!fillsM || !xfsM) return { colorize: (s: number) => s, serialize: () => stylesXml };
+
+  const yellowFillId = Number(fillsM[1]);
+  const fillsInner =
+    fillsM[2] + `<fill><patternFill patternType="solid"><fgColor rgb="FFFFF9C4"/><bgColor indexed="64"/></patternFill></fill>`;
+  const fillCount = yellowFillId + 1;
+
+  const xfs: string[] = [];
+  for (const m of xfsM[2].matchAll(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)) xfs.push(m[0]);
+
+  const cache = new Map<number, number>();
+  const colorize = (origS: number): number => {
+    const cached = cache.get(origS);
+    if (cached != null) return cached;
+    let nx = xfs[origS] ?? xfs[0] ?? "<xf/>";
+    nx = /\bfillId="\d+"/.test(nx)
+      ? nx.replace(/\bfillId="\d+"/, `fillId="${yellowFillId}"`)
+      : nx.replace(/^<xf\b/, `<xf fillId="${yellowFillId}"`);
+    nx = /\bapplyFill="\d"/.test(nx)
+      ? nx.replace(/\bapplyFill="\d"/, `applyFill="1"`)
+      : nx.replace(/^<xf\b/, `<xf applyFill="1"`);
+    const idx = xfs.length;
+    xfs.push(nx);
+    cache.set(origS, idx);
+    return idx;
+  };
+
+  const serialize = () =>
+    stylesXml
+      .replace(/<fills count="\d+"\s*>[\s\S]*?<\/fills>/, `<fills count="${fillCount}">${fillsInner}</fills>`)
+      .replace(/<cellXfs count="\d+"\s*>[\s\S]*?<\/cellXfs>/, `<cellXfs count="${xfs.length}">${xfs.join("")}</cellXfs>`);
+
+  return { colorize, serialize };
+}
+
 // ISO 타임스탬프 → 엑셀 표기 'YYYY-MM-DD HH:MM:SS' (KST). 파싱 안 되면 원문.
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
@@ -93,7 +145,10 @@ function cellFor(lot: Lot, col: ColDef): number | string | null {
   return s;
 }
 
-function fillSheet(xml: string, schema: IoOrWork, lotsIn: Lot[], lotsOut: Lot[]): string {
+function fillSheet(
+  xml: string, schema: IoOrWork, lotsIn: Lot[], lotsOut: Lot[],
+  colorize?: (origS: number) => number,
+): string {
   const lay = layout(schema);
   let cur = xml;
   const writeBlock = (block: Block, lots: Lot[]) => {
@@ -107,6 +162,12 @@ function fillSheet(xml: string, schema: IoOrWork, lotsIn: Lot[], lotsOut: Lot[])
         if (v == null) return; // 빈 값은 스타일만 있는 빈 셀로 둠
         cur = setCell(cur, colLetter(block.start + ci) + row, v);
       });
+      // 완료(잠금) 행: 옅은 노란색 — 블록 열 범위 전체(빈 칸·수식 칸 포함) 스타일만 교체
+      if (lot.locked && colorize) {
+        const cols: number[] = block.statusCol ? [block.statusCol] : [];
+        for (let c = 0; c < block.cols.length; c++) cols.push(block.start + c);
+        for (const cn of cols) cur = recolorCell(cur, colLetter(cn) + row, colorize);
+      }
     });
   };
   writeBlock(lay.in, lotsIn);
@@ -144,6 +205,9 @@ export async function fillUploadXlsm(
   const zip = await JSZip.loadAsync(tpl);
   const sheets = await sheetMap(zip);
   const byId = new Map(procs.map((p) => [p.id, p]));
+  // 완료(잠금) 행 셀 색칠 — styles.xml에 옅은 노란 fill + 파생 스타일 추가(원본 스타일 보존)
+  const stylesFile = zip.file("xl/styles.xml");
+  const colorizer = stylesFile ? makeColorizer(await stylesFile.async("string")) : null;
 
   // 공정명(NFC) → {schema, in, out}
   const groups = new Map<string, { schema: IoOrWork; in: Lot[]; out: Lot[] }>();
@@ -172,9 +236,10 @@ export async function fillUploadXlsm(
     g.in.sort(sorter);
     g.out.sort(sorter);
     let xml = await zip.file(sp)!.async("string");
-    xml = fillSheet(xml, g.schema, g.in, g.out);
+    xml = fillSheet(xml, g.schema, g.in, g.out, colorizer?.colorize);
     zip.file(sp, xml);
   }
+  if (colorizer) zip.file("xl/styles.xml", colorizer.serialize());
   return finalize(zip);
 }
 

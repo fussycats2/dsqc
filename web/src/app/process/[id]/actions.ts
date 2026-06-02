@@ -49,12 +49,13 @@ async function nameOf(supabase: Awaited<ReturnType<typeof createClient>>, id: st
   return (data?.name as string | undefined) ?? null;
 }
 // 이전파트 표시(엑셀 Module4/9): "시트명 일 HH:MM" 예) "양장 21 11:56"
+//  서버는 UTC라 KST(+9h)로 환산해서 문자열 생성(이 값은 텍스트로 저장·표시되므로 생성 시점에 KST여야 함).
 function partStamp(name: string | null) {
   if (!name) return null;
-  const d = new Date();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${name} ${d.getDate()} ${hh}:${mm}`;
+  const d = new Date(Date.now() + 9 * 3600 * 1000); // KST
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${name} ${d.getUTCDate()} ${hh}:${mm}`;
 }
 async function schemaOf(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
   const { data } = await supabase.from("processes").select("schema_type").eq("id", id).single();
@@ -341,23 +342,40 @@ export async function splitLotCustom(
   if (L.weight != null && sumW !== round2(Number(L.weight)))
     return { error: `중량 합(${sumW})이 원본(${L.weight})과 다릅니다.` };
 
-  for (let i = 0; i < parts.length; i++) {
-    await supabase.from("lots").insert({
-      serial: L.serial ? `${L.serial}-${i + 1}` : null,
-      process_id: processId,
-      side: L.side,
-      status: "작업중",
-      prev_process_id: L.prev_process_id,
-      prev_part_name: L.prev_part_name,
-      description: L.description,
-      qty: parts[i].qty,
-      weight: parts[i].weight,
-      due_date: L.due_date,
-      note: L.note,
-      work_date: L.work_date, // 분할도 원본 작업일 승계
-    });
+  // 계보(Option A): 원본의 부모(이전 공정) 링크를 찾아 자식들을 그 부모에 'split'로 직접 연결.
+  //  원본은 계속 삭제(회계=대시보드 입고/오차 무변), 대신 자식이 이전 공정 계보를 이어받음.
+  const { data: parentLinks } = await supabase
+    .from("lot_links").select("from_lot").eq("to_lot", L.id);
+  const parents = [...new Set((parentLinks ?? []).map((e) => e.from_lot as string))];
+
+  // 자식 행(id 직접 부여 → lot_links 일괄 생성). 일련번호 -1..-n, 내역/납기/비고/이전파트 승계.
+  const childIds = parts.map(() => randomUUID());
+  const childRows = parts.map((p, i) => ({
+    id: childIds[i],
+    serial: L.serial ? `${L.serial}-${i + 1}` : null,
+    process_id: processId,
+    side: L.side,
+    status: "작업중",
+    prev_process_id: L.prev_process_id,
+    prev_part_name: L.prev_part_name,
+    description: L.description,
+    qty: p.qty,
+    weight: p.weight,
+    due_date: L.due_date,
+    note: L.note,
+    work_date: L.work_date, // 분할도 원본 작업일 승계
+  }));
+  const ins = await supabase.from("lots").insert(childRows);
+  if (ins.error) return { error: ins.error.message };
+
+  // 부모 → 각 자식 'split' 링크(부모 있을 때만 — 출처행이면 이전 이력 없어 생략).
+  if (parents.length > 0) {
+    const links = parents.flatMap((pid) =>
+      childIds.map((cid) => ({ from_lot: pid, to_lot: cid, relation: "split" as const })));
+    const lk = await supabase.from("lot_links").insert(links);
+    if (lk.error) return { error: lk.error.message };
   }
-  // 원본 삭제 (자식 lot_links는 원본 참조 안 함)
+  // 원본 삭제 — 원본의 기존 링크(부모→원본)는 on delete cascade로 정리(부모→자식 링크는 유지).
   await supabase.from("lots").delete().eq("id", L.id);
   revalidatePath(`/process/${processId}`);
   return { ok: true, parts: parts.length };

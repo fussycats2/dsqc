@@ -299,7 +299,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
       <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 print:hidden">
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-sky-50 ring-1 ring-sky-200" /> 전일값(이월)</span>
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" /> 보존값(위탁·고정)</span>
-        <span>※ 입고·출고·분석투입량은 추후 ‘결산전송’으로 자동 채움(B단계).</span>
+        <span>※ 입고·출고·분석투입량 등은 ‘결산전송’ 버튼을 누르면 자동으로 채워집니다(직접 입력한 칸은 그대로 둡니다).</span>
       </div>
 
       {/* 인쇄 영역 — 엑셀 양식 그대로 */}

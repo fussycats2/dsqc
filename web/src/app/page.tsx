@@ -487,12 +487,14 @@ export default async function Home() {
         procs={procList.map((p) => ({ name: p.name, schema_type: p.schema_type }))}
       />
 
-      <p className="text-[11px] text-slate-400 dark:text-neutral-500">
-        ※ 공정 오차 = 입고 − 재고 − 출고 − 로스 (정상이면 0,{" "}
-        <span className="text-rose-500">빨강</span>은 집계 불일치). 재고 =
-        입고(작업중 잠금 전) 중량 합. 미출고 = 작업완료(side=out) 후 아직
-        출고·이관(잠금) 안 된 건.
-      </p>
+      <div className="space-y-0.5 text-[11px] leading-relaxed text-slate-400 dark:text-neutral-500">
+        <p>
+          · 공정 오차 = 입고 − 재고 − 출고 − 로스 (정상이면 0,{" "}
+          <span className="text-rose-500">빨강</span>은 집계가 안 맞는다는 표시)
+        </p>
+        <p>· 재고 = 입고분 중 아직 작업이 안 끝난(작업중) 중량 합</p>
+        <p>· 미출고 = 작업완료된 것 중 아직 출고·이관하지 않은 건수</p>
+      </div>
     </main>
   );
 }

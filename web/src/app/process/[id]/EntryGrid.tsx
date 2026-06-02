@@ -172,9 +172,11 @@ export function EntryGrid({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-slate-400">
-        ※ 내역·수량·중량·Tag 중 하나라도 입력된 행만 전송됩니다. 입고는 일련번호 자동 생성, 출고는 번호 없이 출고블록으로 들어갑니다. 중량은 소수 2자리.
-      </p>
+      <div className="space-y-0.5 text-xs leading-relaxed text-slate-400">
+        <p>· 내역·수량·중량·Tag 중 하나라도 입력한 행만 전송됩니다.</p>
+        <p>· 입고로 보내면 일련번호가 자동으로 만들어지고, 출고로 보내면 번호 없이 출고 쪽으로 들어갑니다.</p>
+        <p>· 중량은 소수점 둘째 자리까지 입력됩니다.</p>
+      </div>
     </div>
   );
 }

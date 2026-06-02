@@ -83,7 +83,7 @@ export function Backup({
           />
         </div>
         <span className="text-[11px] text-slate-400 dark:text-neutral-500">
-          ※ 매크로(VBA)·수식 보존. 가져오기는 그 작업일에 데이터가 있으면 취소(덮어쓰기 안 함).
+          ※ 엑셀 매크로·수식은 그대로 보존됩니다. 가져오기는 그 작업일에 이미 데이터가 있으면 덮어쓰지 않고 취소합니다.
         </span>
       </div>
 

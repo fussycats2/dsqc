@@ -378,44 +378,52 @@ function EditPanel({
   );
 }
 
-// ───────── 나누기 모달 (어두운 배경 크게보기, 합계 강제 검증) ─────────
+// ───────── 나누기 모달 — 앞 행만 입력, 마지막 '잔량' 행은 자동(원본 − 입력합) ─────────
+//  · 행 추가로 N개 분할(2,3,4…). 마지막 행은 항상 잔량으로 자동 채워져 합이 원본과 정확히 일치.
 function SplitModal({
-  row, initialN, onConfirm, onClose, pending,
+  row, onConfirm, onClose, pending,
 }: {
-  row: Lot; initialN: number;
+  row: Lot;
   onConfirm: (parts: { qty: number | null; weight: number | null }[]) => void;
   onClose: () => void; pending: boolean;
 }) {
   const origQty = row.qty, origWeight = row.weight;
-  const [parts, setParts] = useState<{ qty: string; weight: string }[]>(
-    () => Array.from({ length: Math.max(2, initialN) }, () => ({ qty: "", weight: "" })),
-  );
+  // 편집행(앞부분만). 마지막 잔량 행은 자동 계산이라 state에 없음 → 최소 1개 편집행(+잔량=총 2개).
+  const [parts, setParts] = useState<{ qty: string; weight: string }[]>(() => [{ qty: "", weight: "" }]);
   const set = (i: number, k: "qty" | "weight", v: string) =>
     setParts((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const add = () => setParts((p) => [...p, { qty: "", weight: "" }]);
-  const del = (i: number) => setParts((p) => (p.length > 2 ? p.filter((_, j) => j !== i) : p));
+  const del = (i: number) => setParts((p) => (p.length > 1 ? p.filter((_, j) => j !== i) : p));
 
-  const qtySum = parts.reduce((a, p) => a + (Number(p.qty) || 0), 0);
-  const wSum = round2(parts.reduce((a, p) => a + (Number(p.weight) || 0), 0));
-  const qtyOK = origQty == null || qtySum === Number(origQty);
-  const wOK = origWeight == null || wSum === round2(Number(origWeight));
-  const canSave = !pending && parts.length >= 2 && qtyOK && wOK;
-  const qtyRemain = origQty == null ? null : Number(origQty) - qtySum;
-  const wRemain = origWeight == null ? null : round2(Number(origWeight) - wSum);
+  const sumQ = parts.reduce((a, p) => a + (Number(p.qty) || 0), 0);
+  const sumW = round2(parts.reduce((a, p) => a + (Number(p.weight) || 0), 0));
+  // 잔량(마지막 행) = 원본 − 편집행 합
+  const remQ = origQty == null ? null : Number(origQty) - sumQ;
+  const remW = origWeight == null ? null : round2(Number(origWeight) - sumW);
+  const remOK = (remQ == null || remQ >= 0) && (remW == null || remW >= 0); // 입력합이 원본 초과 X
+  // 잔량 행이 비면 안 됨(중량 기준, 없으면 수량 기준) — 마지막 행에 남길 값이 있어야 진짜 분할
+  const remNonEmpty = origWeight != null ? remW != null && remW > 0
+    : origQty != null ? remQ != null && remQ > 0 : true;
+  const canSave = !pending && remOK && remNonEmpty;
+  const totalParts = parts.length + 1;
 
   const save = () =>
-    onConfirm(parts.map((p) => ({
-      qty: p.qty === "" ? null : Number(p.qty),
-      weight: p.weight === "" ? null : Number(p.weight),
-    })));
+    onConfirm([
+      ...parts.map((p) => ({
+        qty: p.qty === "" ? null : Number(p.qty),
+        weight: p.weight === "" ? null : Number(p.weight),
+      })),
+      { qty: remQ, weight: remW }, // 마지막 = 잔량 자동
+    ]);
   const inp = "w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  const autoBox = "w-full rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-right text-sm tabular-nums text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300";
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl" onKeyDown={focusNextInput}>
         <DialogHeader>
           <DialogTitle>나누기</DialogTitle>
-          <DialogDescription className="sr-only">선택한 행을 여러 행으로 나눕니다. 수량·중량 합이 원본과 같아야 합니다.</DialogDescription>
+          <DialogDescription className="sr-only">앞 행만 입력하면 마지막 행은 잔량으로 자동 채워집니다. 행 추가로 갯수를 늘립니다.</DialogDescription>
         </DialogHeader>
         {/* 원본 */}
         <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-neutral-800">
@@ -427,7 +435,7 @@ function SplitModal({
             <span>중량 <b>{fmtWeight(origWeight)}</b></span>
           </div>
         </div>
-        {/* 분할행 */}
+        {/* 편집 분할행 + 마지막 잔량(자동) */}
         <div className="space-y-2" onKeyDown={focusNextInput}>
           {parts.map((p, i) => (
             <div key={i} className="flex items-end gap-2">
@@ -440,25 +448,39 @@ function SplitModal({
                 <span className="text-[11px] text-slate-400">중량</span>
                 <NumberInput value={p.weight} kind="weight" onChange={(v) => set(i, "weight", v)} className={inp} />
               </label>
-              <button onClick={() => del(i)} disabled={parts.length <= 2}
+              <button onClick={() => del(i)} disabled={parts.length <= 1}
                 className="pb-2 text-slate-300 hover:text-rose-500 disabled:opacity-30">✕</button>
             </div>
           ))}
+          {/* 잔량 행 (자동, 수정 불가) */}
+          <div className="flex items-end gap-2">
+            <span className="w-6 pb-2 text-center text-sm text-amber-500">{parts.length + 1}</span>
+            <label className="flex-1">
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">수량 (잔량)</span>
+              <div className={autoBox}>{remQ == null ? "—" : fmtInt(remQ)}</div>
+            </label>
+            <label className="flex-1">
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">중량 (잔량)</span>
+              <div className={autoBox}>{remW == null ? "—" : fmtWeight(remW)}</div>
+            </label>
+            <span className="w-4 pb-2 text-center text-[10px] text-amber-500">자동</span>
+          </div>
         </div>
         <button onClick={add} className="mt-2 text-xs text-slate-500 hover:underline">+ 행 추가</button>
-        {/* 합계 검증 */}
-        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <div className={`rounded-lg p-2 ${qtyOK ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : "bg-rose-50 text-rose-700 dark:bg-rose-950/40"}`}>
-            수량 합 {fmtInt(qtySum)} / {fmtInt(origQty)}{qtyRemain != null && qtyRemain !== 0 ? ` (잔여 ${fmtInt(qtyRemain)})` : ""}
-          </div>
-          <div className={`rounded-lg p-2 ${wOK ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : "bg-rose-50 text-rose-700 dark:bg-rose-950/40"}`}>
-            중량 합 {fmtWeight(wSum)} / {fmtWeight(origWeight)}{wRemain != null && wRemain !== 0 ? ` (잔여 ${fmtWeight(wRemain)})` : ""}
-          </div>
+        {/* 검증 안내 */}
+        <div className={`mt-3 rounded-lg p-2 text-sm ${
+          canSave ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"
+            : "bg-rose-50 text-rose-700 dark:bg-rose-950/40"}`}>
+          {!remOK
+            ? "입력한 행의 합이 원본을 초과했습니다 — 잔량이 음수입니다."
+            : !remNonEmpty
+              ? "잔량이 0입니다 — 마지막 행에 남길 값이 있어야 합니다(행을 줄이거나 입력값을 낮추세요)."
+              : `${totalParts}개로 나눔 · 마지막 행에 잔량(중량 ${remW == null ? "—" : fmtWeight(remW)}) 자동 배정`}
         </div>
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={onClose}>취소</Button>
           <Button onClick={save} disabled={!canSave} className="bg-amber-500 text-white hover:bg-amber-600">
-            {pending && <Loader2 className="animate-spin" />}나누기 저장
+            {pending && <Loader2 className="animate-spin" />}나누기 저장 ({totalParts}개)
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -507,7 +529,7 @@ function CompleteModal({
             로스율 <b className="tabular-nums">{lossRate == null ? "—" : lossRate.toFixed(1) + "%"}</b>
           </div>
         </div>
-        <p className="text-[11px] text-slate-400">※ 작업후를 비워두면 나중에 행 수정에서 입력할 수 있습니다.</p>
+        <p className="text-[11px] text-slate-400">※ 작업후 중량을 비워두면 나중에 ‘✏️ 수정’ 버튼으로 입력할 수 있습니다.</p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>취소</Button>
           <Button onClick={() => onConfirm(a)} disabled={pending}
@@ -643,7 +665,7 @@ function GenealogyModal({
         ) : nodes.length <= 1 ? (
           <p className="py-10 text-center text-sm text-slate-400">
             연결된 이전·이후 공정 기록이 없습니다.<br />
-            <span className="text-xs">(보내기·집계·이동 시 계보가 기록됩니다. 나누기한 행은 계보가 끊깁니다.)</span>
+            <span className="text-xs">(보내기·집계·이동·나누기 시 계보가 기록됩니다.)</span>
           </p>
         ) : (
           <ol className="relative space-y-0">
@@ -730,7 +752,6 @@ export function ProcessView({
   const isWork = process.schema_type === "work";
   const [selIn, setSelIn] = useState<Set<string>>(new Set());
   const [selOut, setSelOut] = useState<Set<string>>(new Set());
-  const [splitN, setSplitN] = useState(2);
   const [editId, setEditId] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [combos, setCombos] = useState<Combo[]>([]);
@@ -903,14 +924,9 @@ export function ProcessView({
                 onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서출고`)} />
             </>
           )}
-          {/* 나누기 (작업중/입고 단건) */}
-          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
-            <input type="number" min={2} value={splitN}
-              onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))}
-              className="w-12 rounded-md bg-white px-1.5 py-1 text-right text-xs dark:bg-neutral-900" />
-            <ActionBtn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
-              onClick={() => setSplitRowId(inIds[0])}>나누기</ActionBtn>
-          </div>
+          {/* 나누기 (작업중/입고 단건) — 갯수는 모달 안에서 행 추가로 조절 */}
+          <ActionBtn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
+            onClick={() => setSplitRowId(inIds[0])}>나누기</ActionBtn>
           {/* 목표중량 조합 찾기 (공정 전용) */}
           {isWork && (
             <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
@@ -937,8 +953,8 @@ export function ProcessView({
 
           {isWork ? (
             <>
-              <TargetAction label="이관" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
-                onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 이관`)} />
+              <TargetAction label="공정이관" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
+                onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 공정이관`)} />
               <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
               <TargetAction label="검수출고" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0 || hasLocked}
@@ -1007,7 +1023,7 @@ export function ProcessView({
 
       {/* 나누기 모달 */}
       {splitRow && (
-        <SplitModal key={splitRow.id} row={splitRow} initialN={splitN} pending={pending}
+        <SplitModal key={splitRow.id} row={splitRow} pending={pending}
           onClose={() => setSplitRowId(null)}
           onConfirm={(parts) => start(async () => {
             const res = await splitLotCustom(process.id, splitRow.id, parts);
@@ -1048,12 +1064,14 @@ export function ProcessView({
           onToggle={toggle("out")} onToggleAll={toggleAll("out", outRows)} onTrace={openTrace} />
       </div>
 
-      <p className="text-[11px] text-slate-400 print:hidden">
-        ※ 행을 누르면 선택(체크), <b className="text-blue-500">일련번호</b>를 누르면 계보(거쳐온 공정)를 볼 수 있습니다.
-        좌·우는 동시 선택 불가(흐름 로직이 다름). 일련번호는 이동해도 유지(집계·분할 시에만 형태 변경).
-        처리행은 🔒 잠금 — 맨 오른쪽 버튼으로 해제·삭제. 표는 보기 전용 — 수정은 ✏️ 행 수정·Tag 보정 모달에서만.
-        작업후=집계 모달 입력, 실중량=이전 파트 이월, Tag중량/로스/출고중량=자동 계산.
-      </p>
+      <div className="space-y-1 rounded-lg border border-slate-100 bg-slate-50/50 p-3 text-[11px] leading-relaxed text-slate-500 print:hidden dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-400">
+        <p>· 행을 누르면 <b>선택(체크)</b>, <b className="text-blue-500">일련번호</b>를 누르면 그 품목이 <b>거쳐온 공정 이력</b>을 볼 수 있습니다.</p>
+        <p>· 왼쪽·오른쪽 표는 <b>동시에 선택할 수 없습니다</b> (처리 방식이 다릅니다).</p>
+        <p>· 일련번호는 공정을 옮겨도 <b>그대로 유지</b>됩니다 (작업완료·나누기 때만 형태가 바뀝니다).</p>
+        <p>· 처리가 끝난 행은 🔒 로 <b>잠깁니다</b> — 맨 오른쪽 ‘잠금 해제·삭제’로만 풀거나 지울 수 있습니다.</p>
+        <p>· 표는 보기 전용입니다 — 값 수정은 ‘✏️ 수정’·‘Tag 보정’ 버튼으로 뜨는 입력 창에서만 합니다.</p>
+        <p>· 작업후 중량은 작업완료(집계) 창에서 입력, 실중량은 이전 공정에서 넘어오고, Tag중량·로스·출고중량은 <b>자동 계산</b>됩니다.</p>
+      </div>
 
       {/* 계보 추적 모달 (일련번호 클릭) */}
       {traceOpen && (
