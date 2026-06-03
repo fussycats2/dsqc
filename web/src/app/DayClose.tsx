@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DateStepper } from "@/components/DateStepper";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -17,7 +18,6 @@ const nextDay = (d: string) => {
 // 표시용: yyyy-mm-dd → yyyy/mm/dd
 const fmtD = (s?: string | null) => (s ? s.replaceAll("-", "/") : "");
 
-const inputCls = "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
 // 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지
 const lockedCls = "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
 const brand = "bg-[#4b3526] text-white hover:bg-[#3a281c]";
@@ -110,7 +110,7 @@ export function DayClose({ workDate, stock18, stock14 }: { workDate: string; sto
           <input type="date" value={src} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedCls} />
           <span className="text-slate-300 dark:text-neutral-600">→</span>
           <label className="text-xs text-slate-500 dark:text-neutral-400">이월일</label>
-          <input type="date" value={carry} onChange={(e) => setCarry(e.target.value)} className={inputCls} />
+          <DateStepper value={carry} onChange={setCarry} />
           <Button size="sm" className={brand} onClick={doClose} disabled={pending}>
             {pending && <Loader2 className="animate-spin" />}마감 실행
           </Button>
@@ -122,7 +122,7 @@ export function DayClose({ workDate, stock18, stock14 }: { workDate: string; sto
         <div className="flex items-center gap-1.5">
           <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedCls} />
           <span className="text-slate-300 dark:text-neutral-600">→</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputCls} />
+          <DateStepper value={to} onChange={setTo} />
           <Button size="sm" variant="outline" onClick={doMove} disabled={pending}>변경</Button>
         </div>
 

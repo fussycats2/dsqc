@@ -5,6 +5,7 @@ import { fmtWeight, round2, type Process } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 import { DayClose } from "./DayClose";
 import { Backup } from "./Backup";
+import { UpdateNotice } from "@/components/UpdateNotice";
 
 type Karat = "18K" | "14K";
 
@@ -375,6 +376,9 @@ export default async function Home() {
 
   return (
     <main className="space-y-5 p-6">
+      {/* 로그인(새 세션) 시 신규 업데이트 안내 모달 — 평소엔 아무것도 렌더 안 함 */}
+      <UpdateNotice />
+
       {/* 상단 제목 — 설명은 제목 오른쪽에 인라인 */}
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>

@@ -97,27 +97,36 @@ function AutoFitText({ text, align }: { text: string; align: "left" | "center" }
 }
 
 // 목표 중량에 가장 근사한 조합(2개 이상) 찾기 — 작업중 weight(중량) 기준
+//  · required: 반드시 포함되는 항목(사용자가 체크한 미완료 행) — 그 항목들을 포함한 조합만 반환
+//  · pool: 보완용 후보(나머지 미잠금 행). pool 부분합이 (target−required합)에 근사하도록 탐색
 //  분기한정 DFS(오름차순 정렬 + 초과 가지치기 + 노드/크기 상한)로 상위 N개 반환
 type Combo = { ids: string[]; sum: number; diff: number };
 function findCombos(
-  items: { id: string; w: number }[],
+  pool: { id: string; w: number }[],
   target: number,
   topN = 5,
+  required: { id: string; w: number }[] = [],
   maxSize = 10,
 ): Combo[] {
-  const arr = items.filter((it) => it.w > 0).sort((a, b) => a.w - b.w);
+  const reqIds = required.map((r) => r.id);
+  const reqSum = required.reduce((a, r) => a + r.w, 0);
+  const reqCount = required.length;
+  const poolTarget = target - reqSum; // pool 부분합이 근사할 목표
+  const arr = pool.filter((it) => it.w > 0).sort((a, b) => a.w - b.w);
   const n = arr.length;
+  const cap = Math.max(0, maxSize - reqCount); // pool에서 추가로 고를 수 있는 최대 개수
   const best: Combo[] = [];
   let worst = Infinity;
   let nodes = 0;
   const CAP = 1_500_000;
   const cur: number[] = [];
 
-  const consider = (sum: number) => {
-    if (cur.length < 2) return;
-    const diff = Math.abs(sum - target);
+  const consider = (poolSum: number) => {
+    if (reqCount + cur.length < 2) return; // 전체 조합은 2개 이상
+    const full = reqSum + poolSum;
+    const diff = Math.abs(full - target);
     if (best.length < topN || diff < worst) {
-      best.push({ ids: cur.map((i) => arr[i].id), sum: round2(sum), diff: round2(diff) });
+      best.push({ ids: [...reqIds, ...cur.map((i) => arr[i].id)], sum: round2(full), diff: round2(diff) });
       best.sort((a, b) => a.diff - b.diff || a.ids.length - b.ids.length);
       if (best.length > topN) best.pop();
       worst = best[best.length - 1].diff;
@@ -125,20 +134,24 @@ function findCombos(
   };
   const dfs = (i: number, sum: number) => {
     if (nodes++ > CAP || i >= n) return;
-    if (cur.length < maxSize) {
+    if (cur.length < cap) {
       const ns = sum + arr[i].w;
       cur.push(i);
       consider(ns);
-      // 초과 가지치기: 이미 target+worst 초과면 더 더해도 악화 → 포함 분기 중단
-      if (!(ns - target > worst && ns >= target)) dfs(i + 1, ns);
+      // 초과 가지치기: 이미 poolTarget+worst 초과면 더 더해도 악화 → 포함 분기 중단
+      if (!(ns - poolTarget > worst && ns >= poolTarget)) dfs(i + 1, ns);
       cur.pop();
     }
     dfs(i + 1, sum); // 미포함
   };
+  consider(0); // required만으로 이미 2개 이상이면 그 자체도 후보
   dfs(0, 0);
   return best.sort((a, b) => a.diff - b.diff || a.ids.length - b.ids.length);
 }
 const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+const COMBO_INIT = 7; // 처음 보여줄 조합 수
+const COMBO_STEP = 5; // 더보기 1회당 추가
+const COMBO_MAX = 30; // findCombos가 계산할 최대 조합 수(= 더보기 상한)
 
 // ───────── 한 블록 테이블 카드 (표시 전용 — 수정은 모달에서만) ─────────
 function LotTable({
@@ -755,6 +768,8 @@ export function ProcessView({
   const [editId, setEditId] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [combos, setCombos] = useState<Combo[]>([]);
+  const [visibleCombos, setVisibleCombos] = useState(COMBO_INIT); // 더보기로 늘어남
+  const [comboReq, setComboReq] = useState(0); // 이번 조합에 강제 포함된 체크 건수(표시용)
   const [splitRowId, setSplitRowId] = useState<string | null>(null);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [tagAdjustOpen, setTagAdjustOpen] = useState(false);
@@ -863,9 +878,15 @@ export function ProcessView({
       .filter((r) => !r.locked && Number(r.weight) > 0)
       .map((r) => ({ id: r.id, w: Number(r.weight) }));
     if (items.length < 2) { notify("info", "조합할 행이 부족합니다."); return; }
-    const res = findCombos(items, t, 7);
+    // 체크한 작업중(미완료·미잠금) 행은 반드시 포함 — 나머지(pool)에서 목표에 맞게 보완
+    const required = items.filter((it) => selIn.has(it.id));
+    const pool = items.filter((it) => !selIn.has(it.id));
+    const res = findCombos(pool, t, COMBO_MAX, required);
     setCombos(res);
-    if (res.length === 0) notify("info", "조합을 찾지 못했습니다.");
+    setVisibleCombos(COMBO_INIT);
+    setComboReq(required.length);
+    if (res.length === 0)
+      notify("info", required.length > 0 ? "선택 항목을 포함하는 조합을 찾지 못했습니다." : "조합을 찾지 못했습니다.");
   };
   const pickCombo = (c: Combo) => { setSelIn(new Set(c.ids)); setSelOut(new Set()); };
   const editRow = editId
@@ -940,7 +961,9 @@ export function ProcessView({
                   if (target !== "" && !isNaN(n)) setTarget(fmtWeight(n));
                 }}
                 className="w-24 rounded-md bg-white px-2 py-1 text-center text-xs tabular-nums dark:bg-neutral-900" />
-              <ActionBtn tone="primary" disabled={pending} onClick={runFind}>조합 찾기</ActionBtn>
+              <ActionBtn tone="primary" disabled={pending || hasLocked || nOut > 0}
+                title={hasLocked || nOut > 0 ? "작업중(미완료) 행만 체크한 상태에서 사용할 수 있습니다" : undefined}
+                onClick={runFind}>조합 찾기</ActionBtn>
             </div>
           )}
           <ActionBtn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
@@ -1000,15 +1023,23 @@ export function ProcessView({
         {/* 조합 찾기 결과 (공정 전용) */}
         {isWork && combos.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 dark:border-neutral-800">
-            <span className="text-xs text-slate-400">목표 {fmtWeight(target.replace(/,/g, ""))} 근사 조합</span>
-            {combos.map((c, i) => (
+            <span className="text-xs text-slate-400">
+              목표 {fmtWeight(target.replace(/,/g, ""))} 근사 조합
+              {comboReq > 0 && <span className="text-teal-600 dark:text-teal-400"> · 선택 {comboReq}건 포함</span>}
+            </span>
+            {combos.slice(0, visibleCombos).map((c, i) => (
               <button key={i} onClick={() => pickCombo(c)}
                 className="rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs text-teal-800 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-200">
-                <b>{CIRCLED[i]}</b> {fmtWeight(c.sum)}
+                <b>{CIRCLED[i] ?? `${i + 1}`}</b> {fmtWeight(c.sum)}
                 <span className="text-slate-400"> ({c.ids.length}건{c.diff > 0 ? `, 오차 ${fmtWeight(c.diff)}` : ", 정확"})</span>
               </button>
             ))}
-            <button onClick={() => setCombos([])}
+            <button onClick={() => setVisibleCombos((v) => Math.min(v + COMBO_STEP, combos.length))}
+              disabled={visibleCombos >= combos.length}
+              className="rounded-lg border border-teal-300 px-2 py-1 text-xs text-teal-700 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-950/40">
+              더보기
+            </button>
+            <button onClick={() => { setCombos([]); setComboReq(0); }}
               className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-500 dark:border-neutral-700">지우기</button>
           </div>
         )}

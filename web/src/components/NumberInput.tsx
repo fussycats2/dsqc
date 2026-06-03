@@ -12,6 +12,7 @@ export function NumberInput({
   align = "right",
   className = "",
   placeholder,
+  cellId,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -20,6 +21,7 @@ export function NumberInput({
   align?: "left" | "right";
   className?: string;
   placeholder?: string;
+  cellId?: string; // 엑셀식 격자 좌표(useGridSheet) — 지정 시 data-cell로 노출
 }) {
   const pat = kind === "int" ? /^\d*$/ : /^\d*\.?\d{0,2}$/;
 
@@ -27,6 +29,7 @@ export function NumberInput({
     <input
       value={value}
       placeholder={placeholder}
+      data-cell={cellId}
       inputMode={kind === "int" ? "numeric" : "decimal"}
       onChange={(e) => {
         const raw = e.target.value;

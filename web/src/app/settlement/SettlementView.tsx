@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { Download, Loader2, Printer, Save, Send, Upload } from "lucide-react";
 import { fmtWeight } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { DateStepper } from "@/components/DateStepper";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
+import { useGridSheet } from "@/lib/useGridSheet";
 import { saveSettlement, carrySettlement, moveSettlement, pushFromLots } from "./settlementActions";
 
 const fmtD = (s?: string | null) => (s ? s.replaceAll("-", "/") : "");
@@ -45,8 +47,6 @@ type C =
   | { k: "calc"; a: string; span?: number; cls?: string }
   | { k: "e"; span?: number; b?: boolean };
 
-const dateInputCls =
-  "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
 // 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지(대시보드와 동일)
 const lockedDateCls =
   "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
@@ -69,6 +69,28 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const [pending, start] = useTransition();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 엑셀식 격자 조작(방향키 이동·Enter·드래그 선택·복사·붙여넣기) — input[data-cell] 대상
+  const gridRef = useRef<HTMLDivElement>(null);
+  // 붙여넣기: 기준 주소(예: "B5")에서 열문자+1·행번호+1로 펴서 채움. 입력칸이 있는 주소만 반영.
+  const onGridPaste = (anchorCell: string, matrix: string[][]) => {
+    const m = anchorCell.match(/^([A-M])(\d+)$/);
+    setVals((prev) => {
+      const next = { ...prev };
+      if (!m) { next[anchorCell] = (matrix[0]?.[0] ?? "").replace(/,/g, ""); return next; }
+      const c0 = COL.indexOf(m[1]), r0 = Number(m[2]);
+      for (let dr = 0; dr < matrix.length; dr++) {
+        for (let dc = 0; dc < matrix[dr].length; dc++) {
+          const ci = c0 + dc;
+          if (ci >= COL.length) break;
+          const addr = COL[ci] + (r0 + dr);
+          if (gridRef.current?.querySelector(`input[data-cell="${addr}"]`)) next[addr] = matrix[dr][dc].replace(/,/g, "");
+        }
+      }
+      return next;
+    });
+  };
+  useGridSheet(gridRef, { onPaste: onGridPaste });
 
   // initial/workDate(prop) 변경 시 입력값·기본 날짜 동기화 — effect 대신 "렌더 중 조정" 패턴
   const [prevKey, setPrevKey] = useState({ initial, workDate });
@@ -102,7 +124,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         ? "bg-sky-50 dark:bg-sky-900/15 print:bg-transparent"
         : "";
     return (
-      <input value={commaFmt(vals[a] ?? "")} inputMode="decimal"
+      <input value={commaFmt(vals[a] ?? "")} inputMode="decimal" data-cell={a}
         onChange={(e) => {
           const r = e.target.value.replace(/,/g, "");
           if (r === "" || r === "-" || /^-?\d*\.?\d{0,2}$/.test(r)) set(a, r);
@@ -280,7 +302,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <input type="date" value={src} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
-          <input type="date" value={carry} onChange={(e) => setCarry(e.target.value)} className={dateInputCls} />
+          <DateStepper value={carry} onChange={setCarry} />
           <Button size="sm" className="bg-[#4b3526] text-white hover:bg-[#3a281c]" onClick={doCarry} disabled={pending}>
             {pending && <Loader2 className="animate-spin" />}마감·이월
           </Button>
@@ -290,7 +312,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <div className="flex items-center gap-1.5">
           <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
           <span className="text-slate-300">→</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={dateInputCls} />
+          <DateStepper value={to} onChange={setTo} />
           <Button size="sm" variant="outline" onClick={doMove} disabled={pending}>변경</Button>
         </div>
         {msg && <span className="text-xs text-slate-500 dark:text-neutral-400">{msg}</span>}
@@ -300,10 +322,11 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-sky-50 ring-1 ring-sky-200" /> 전일값(이월)</span>
         <span className="flex items-center gap-1"><span className="inline-block h-3 w-4 rounded-sm bg-amber-50 ring-1 ring-amber-200" /> 보존값(위탁·고정)</span>
         <span>※ 입고·출고·분석투입량 등은 ‘결산전송’ 버튼을 누르면 자동으로 채워집니다(직접 입력한 칸은 그대로 둡니다).</span>
+        <span>※ 엑셀처럼 Enter·방향키로 칸 이동, 드래그로 여러 칸 선택 후 Ctrl+C 복사, 엑셀 표를 붙여넣기(Ctrl+V)할 수 있습니다.</span>
       </div>
 
       {/* 인쇄 영역 — 엑셀 양식 그대로 */}
-      <div className="mx-auto w-fit bg-white px-2 text-slate-900 dark:bg-white">
+      <div ref={gridRef} className="mx-auto w-fit bg-white px-2 text-slate-900 dark:bg-white">
         <div className="py-1 text-center text-[15px] font-bold tracking-wide">품질관리부 일일 결산서</div>
         <div className="pb-1 text-right text-[11px] text-slate-600">{fmtD(workDate)}</div>
         {sheet(<span className="text-rose-600">K18</span>, block18)}

@@ -8,6 +8,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { UpdateHistory } from "@/components/UpdateHistory";
 
 type Karat = "18K" | "14K";
 
@@ -142,13 +143,17 @@ export function TabBar({ processes }: { processes: Process[] }) {
       {MENU_GROUPS.slice(0, 2).map(groupMenu)}
       {divider}
       {MENU_GROUPS.slice(2).map(groupMenu)}
-      {activeProcess && activeProcess.schema_type !== "entry" && (
-        <span className="ml-auto flex items-center gap-1.5 text-sm text-gray-500 dark:text-neutral-400">
-          <span className={`font-bold ${karat === "18K" ? "text-rose-600 dark:text-rose-400" : "text-blue-600 dark:text-blue-400"}`}>{karat}</span>
-          <span className="text-gray-300 dark:text-neutral-600">›</span>
-          <span className="text-base font-bold text-gray-800 dark:text-neutral-100">{activeProcess.name}</span>
-        </span>
-      )}
+      {/* 오른쪽 그룹: (공정시트면 현재 공정 표시) + 업데이트 이력 — 제일 오른쪽 고정 */}
+      <div className="ml-auto flex items-center gap-2">
+        {activeProcess && activeProcess.schema_type !== "entry" && (
+          <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-neutral-400">
+            <span className={`font-bold ${karat === "18K" ? "text-rose-600 dark:text-rose-400" : "text-blue-600 dark:text-blue-400"}`}>{karat}</span>
+            <span className="text-gray-300 dark:text-neutral-600">›</span>
+            <span className="text-base font-bold text-gray-800 dark:text-neutral-100">{activeProcess.name}</span>
+          </span>
+        )}
+        <UpdateHistory />
+      </div>
     </nav>
   );
 }
