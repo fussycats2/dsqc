@@ -1,7 +1,10 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { DatePicker } from "@/components/DatePicker";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 
 const KEY = "dsqc.workDate";
 const EVT = "dsqc.workDate.change"; // change() 후 useSyncExternalStore 재읽기 트리거용
@@ -33,16 +36,19 @@ function subscribe(cb: () => void) {
   };
 }
 
-// 작업 날짜 토글 (◀ 날짜 ▶ · 오늘). 쿠키에 저장 → 서버가 그 날짜 데이터로 필터.
+// 작업 날짜 토글 (◀ 달력 ▶ · 오늘). 쿠키에 저장 → 서버가 그 날짜 데이터로 필터.
 export function DateToggle() {
   const router = useRouter();
   const date = useSyncExternalStore(subscribe, () => readCookie() ?? todayKST(), todayKST);
+  // 작업일 변경 시 router.refresh()를 transition으로 감싸 '불러오는 중' 상태를 노출
+  //  (서버 컴포넌트 재실행이라 loading.tsx가 안 걸림 → isPending으로 직접 표시)
+  const [pending, start] = useTransition();
 
   const change = (v: string) => {
     // 1년 보존 쿠키 + 서버 컴포넌트 재실행(작업일 필터 반영)
     document.cookie = `${KEY}=${v}; path=/; max-age=31536000`;
     window.dispatchEvent(new Event(EVT)); // 구독자(useSyncExternalStore) 재읽기
-    router.refresh();
+    start(() => router.refresh());
   };
 
   const isToday = date === todayKST();
@@ -52,23 +58,18 @@ export function DateToggle() {
       <span className="text-gray-400 text-xs mr-1 dark:text-neutral-500">작업일</span>
       <button
         onClick={() => change(shift(date, -1))}
-        className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
+        className="inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
         aria-label="이전 날짜"
       >
-        ◀
+        <ChevronLeft className="size-4" />
       </button>
-      <input
-        type="date"
-        value={date}
-        onChange={(e) => change(e.target.value)}
-        className="border border-gray-300 rounded px-2 py-0.5 tabular-nums dark:border-neutral-600 dark:bg-neutral-900"
-      />
+      <DatePicker value={date} onChange={change} />
       <button
         onClick={() => change(shift(date, 1))}
-        className="px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
+        className="inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
         aria-label="다음 날짜"
       >
-        ▶
+        <ChevronRight className="size-4" />
       </button>
       <button
         onClick={() => change(todayKST())}
@@ -81,6 +82,12 @@ export function DateToggle() {
       >
         오늘
       </button>
+
+      {/* 불러오는 중: 토글 옆 스피너 + 중앙 오버레이 */}
+      {pending && (
+        <Loader2 className="ml-1 size-4 animate-spin text-blue-500" aria-label="불러오는 중" />
+      )}
+      <LoadingOverlay show={pending} />
     </div>
   );
 }

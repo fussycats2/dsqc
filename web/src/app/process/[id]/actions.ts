@@ -61,14 +61,30 @@ async function schemaOf(supabase: Awaited<ReturnType<typeof createClient>>, id: 
   const { data } = await supabase.from("processes").select("schema_type").eq("id", id).single();
   return (data?.schema_type as string | undefined) ?? null;
 }
-async function readUnlocked(
+// 동시작업 안전장치: 선택 행을 '먼저 조건부 잠금(locked=false인 것만)'으로 점유하고, 실제 점유한 행만 반환.
+//  · 두 기기가 같은 행을 동시에 처리해도 한쪽만 점유 → 이중 집계/이중 이관 차단.
+//  · patch = 흐름별 점유 상태값(완료+잠금, 이관이면 moved_* 포함). undo = 중단/실패 시 원복할 값.
+async function claimUnlocked(
   supabase: Awaited<ReturnType<typeof createClient>>,
   lotIds: string[],
+  patch: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
-    .from("lots").select("*").in("id", lotIds).eq("locked", false);
+    .from("lots").update(patch).eq("locked", false).in("id", lotIds).select("*");
   return { rows: (data ?? []) as LotRow[], error };
 }
+
+// 중단/실패 시 점유 해제(원복) — 이중 처리 차단으로 일부만 점유됐거나 후속 insert가 실패한 경우.
+async function releaseClaim(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: LotRow[],
+  undo: Record<string, unknown>,
+) {
+  if (rows.length === 0) return;
+  await supabase.from("lots").update(undo).in("id", rows.map((l) => l.id));
+}
+
+const STALE_MSG = "선택한 행 중 일부가 다른 기기에서 먼저 처리되었습니다. 새로고침 후 다시 시도하세요.";
 
 // ───────── 보내기 (작성 → io 입고/출고): Module2 AskInboundMode ─────────
 //  · 입고(side=in, A:I): 일련번호 최초 생성(약자_YYMMDD_001)
@@ -153,10 +169,19 @@ export async function completeLots(
   if ((await schemaOf(supabase, processId)) !== "work")
     return { error: "집계(작업완료)는 공정(연마/뻥/빠우)에서만 가능합니다." };
 
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
+  // 1) 먼저 점유(완료+잠금) — 동시/중복 작업완료 차단. 실제로 내가 잠근 행만 반환.
+  const COMPLETE_UNDO = { status: "작업중", locked: false, completed_at: null };
+  const { rows: lots, error } = await claimUnlocked(supabase, lotIds, {
+    status: "완료", locked: true, completed_at: new Date().toISOString(),
+  });
   if (error) return { error: "DB: " + error.message };
   if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
+  if (lots.length !== lotIds.length) {
+    await releaseClaim(supabase, lots, COMPLETE_UNDO); // 일부만 점유 → 이중 집계 방지 위해 원복 후 중단
+    return { error: STALE_MSG };
+  }
 
+  // 2) 점유분으로 집계 출력행 생성
   const serial = buildGroupedSerial(lots.map((l) => l.serial));
   const outId = randomUUID(); // id를 직접 부여 → 읽기-후-삽입 없이 lot_links 일괄 생성
   const { error: insErr } = await supabase
@@ -178,17 +203,14 @@ export async function completeLots(
       note: joinText(lots, "note"),                         // 비고(J) 중복제거 결합
       work_date: lots[0]?.work_date, // 집계 결과는 원본 작업일 승계
     });
-  if (insErr) return { error: "완료행 생성 실패: " + insErr.message };
+  if (insErr) {
+    await releaseClaim(supabase, lots, COMPLETE_UNDO); // 출력행 생성 실패 → 점유 원복
+    return { error: "완료행 생성 실패: " + insErr.message };
+  }
 
-  // N+1 제거: lot_links 일괄 insert + 원본 잠금 일괄 update(.in) 을 병렬 실행
-  const [lk, up] = await Promise.all([
-    supabase.from("lot_links").insert(lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" }))),
-    supabase.from("lots")
-      .update({ status: "완료", locked: true, completed_at: new Date().toISOString() })
-      .in("id", lots.map((l) => l.id)),
-  ]);
+  const lk = await supabase.from("lot_links")
+    .insert(lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" })));
   if (lk.error) return { error: lk.error.message };
-  if (up.error) return { error: up.error.message };
   revalidatePath(`/process/${processId}`);
   return { ok: true, merged: lots.length, serial };
 }
@@ -206,15 +228,25 @@ async function moveLots(
   build: MoveBuild,
 ) {
   if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
-  const { rows: lots, error } = await readUnlocked(supabase, lotIds);
-  if (error) return { error: "DB: " + error.message };
-  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
-
   const [srcName, tgtName] = await Promise.all([
     nameOf(supabase, sourceProcessId),
     nameOf(supabase, targetProcessId),
   ]);
   const now = new Date().toISOString();
+
+  // 1) 먼저 점유(완료+잠금+이동표시) — 동시/중복 이동 차단. 실제로 내가 잠근 행만 반환.
+  const MOVE_UNDO = { locked: false, status: "작업중", moved_at: null, moved_to_name: null };
+  const { rows: lots, error } = await claimUnlocked(supabase, lotIds, {
+    locked: true, status: "완료", moved_at: now, moved_to_name: tgtName,
+  });
+  if (error) return { error: "DB: " + error.message };
+  if (lots.length === 0) return { error: "처리 가능한 행이 없습니다." };
+  if (lots.length !== lotIds.length) {
+    await releaseClaim(supabase, lots, MOVE_UNDO); // 일부만 점유 → 이중 이동 방지 위해 원복 후 중단
+    return { error: STALE_MSG };
+  }
+
+  // 2) 점유분으로 대상 공정 행 생성
   const newLots = lots.map((l) => ({
     id: randomUUID(),
     process_id: targetProcessId,
@@ -224,18 +256,15 @@ async function moveLots(
     ...build(l, srcName),
   }));
   const ins = await supabase.from("lots").insert(newLots);
-  if (ins.error) return { error: ins.error.message };
+  if (ins.error) {
+    await releaseClaim(supabase, lots, MOVE_UNDO); // 대상행 생성 실패 → 점유 원복
+    return { error: ins.error.message };
+  }
 
-  const [lk, up] = await Promise.all([
-    supabase.from("lot_links").insert(
-      lots.map((l, i) => ({ from_lot: l.id, to_lot: newLots[i].id, relation: "move" })),
-    ),
-    supabase.from("lots").update({
-      locked: true, status: "완료", moved_at: now, moved_to_name: tgtName,
-    }).in("id", lots.map((l) => l.id)),
-  ]);
+  const lk = await supabase.from("lot_links").insert(
+    lots.map((l, i) => ({ from_lot: l.id, to_lot: newLots[i].id, relation: "move" })),
+  );
   if (lk.error) return { error: lk.error.message };
-  if (up.error) return { error: up.error.message };
   revalidatePath(`/process/${sourceProcessId}`);
   revalidatePath(`/process/${targetProcessId}`);
   return { ok: true, moved: lots.length };
@@ -329,18 +358,25 @@ export async function splitLotCustom(
 ) {
   if (parts.length < 2) return { error: "2개 이상으로 나누세요." };
   const supabase = await createClient();
-  const { data: lotData } = await supabase
-    .from("lots").select("*").eq("id", lotId).eq("locked", false).single();
-  if (!lotData) return { error: "처리 가능한 행이 아닙니다." };
-  const L = lotData as LotRow;
 
-  // 서버 재검증: 합이 원본과 일치(원본 값이 있을 때만)
+  // 원본을 먼저 점유(조건부 잠금) — 동시 분할 차단. 못 잠그면 이미 다른 기기에서 처리/삭제됨.
+  const { data: claimed } = await supabase
+    .from("lots").update({ locked: true }).eq("id", lotId).eq("locked", false).select("*").maybeSingle();
+  if (!claimed) return { error: "처리 가능한 행이 아닙니다(다른 기기에서 먼저 처리됨). 새로고침 후 다시 시도하세요." };
+  const L = claimed as LotRow;
+  const unlockParent = () => supabase.from("lots").update({ locked: false }).eq("id", lotId);
+
+  // 서버 재검증: 합이 원본과 일치(원본 값이 있을 때만). 어긋나면 점유 원복 후 중단.
   const sumQ = parts.reduce((a, p) => a + (Number(p.qty) || 0), 0);
   const sumW = round2(parts.reduce((a, p) => a + (Number(p.weight) || 0), 0));
-  if (L.qty != null && sumQ !== Number(L.qty))
+  if (L.qty != null && sumQ !== Number(L.qty)) {
+    await unlockParent();
     return { error: `수량 합(${sumQ})이 원본(${L.qty})과 다릅니다.` };
-  if (L.weight != null && sumW !== round2(Number(L.weight)))
+  }
+  if (L.weight != null && sumW !== round2(Number(L.weight))) {
+    await unlockParent();
     return { error: `중량 합(${sumW})이 원본(${L.weight})과 다릅니다.` };
+  }
 
   // 계보(Option A): 원본의 부모(이전 공정) 링크를 찾아 자식들을 그 부모에 'split'로 직접 연결.
   //  원본은 계속 삭제(회계=대시보드 입고/오차 무변), 대신 자식이 이전 공정 계보를 이어받음.
@@ -366,7 +402,10 @@ export async function splitLotCustom(
     work_date: L.work_date, // 분할도 원본 작업일 승계
   }));
   const ins = await supabase.from("lots").insert(childRows);
-  if (ins.error) return { error: ins.error.message };
+  if (ins.error) {
+    await unlockParent(); // 자식행 생성 실패 → 원본 점유 원복
+    return { error: ins.error.message };
+  }
 
   // 부모 → 각 자식 'split' 링크(부모 있을 때만 — 출처행이면 이전 이력 없어 생략).
   if (parents.length > 0) {

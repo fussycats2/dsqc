@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Check, ChevronUp } from "lucide-react";
 import type { Process } from "@/lib/types";
 import {
@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { UpdateHistory } from "@/components/UpdateHistory";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 
 type Karat = "18K" | "14K";
 
@@ -56,8 +57,10 @@ function Seg({
 export function TabBar({ processes }: { processes: Process[] }) {
   const pathname = usePathname();
   const router = useRouter();
-  // <a href> 대신 클릭 이동 → 호버 시 브라우저 상태바에 URL(경로) 노출 안 됨
-  const go = (href: string) => router.push(href);
+  const [navPending, startNav] = useTransition();
+  // <a href> 대신 클릭 이동 → 호버 시 브라우저 상태바에 URL(경로) 노출 안 됨.
+  //  transition으로 감싸 대상 화면 서버 렌더가 끝날 때까지 중앙 '불러오는 중' 표시.
+  const go = (href: string) => startNav(() => router.push(href));
   // 호버/포커스 시 라우트 prefetch → 클릭 시 콜드 렌더 대기 없이 즉시 전환(체감 속도 개선)
   const warm = (href: string) => router.prefetch(href);
   const entry = processes.find((p) => p.schema_type === "entry");
@@ -154,6 +157,7 @@ export function TabBar({ processes }: { processes: Process[] }) {
         )}
         <UpdateHistory />
       </div>
+      <LoadingOverlay show={navPending} />
     </nav>
   );
 }

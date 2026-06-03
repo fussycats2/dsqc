@@ -1,17 +1,19 @@
 "use client";
 
-// 편집 가능한 날짜 입력 + 앞뒤 화살표(◀ ▶) — 상단 작업일 토글과 동일한 조작감.
-// 잠금(마감일·변경 원래날짜)에는 쓰지 않음(직접 수정 불가).
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DatePicker } from "@/components/DatePicker";
+
+// 편집 가능한 날짜: ‹ [작업일 달력] › — 상단 작업일 토글과 동일한 위젯·조작감.
+// 잠금(마감일·변경 원래날짜)에는 쓰지 않음(DatePicker의 locked 사용).
 function shift(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
+// 작업일 토글의 ‹ › Chevron 화살표와 동일한 스타일
 const arrowCls =
-  "rounded-md border border-slate-300 px-1.5 py-1 text-xs leading-none hover:bg-slate-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
-const inputCls =
-  "rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900";
+  "inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800";
 
 export function DateStepper({
   value,
@@ -31,15 +33,9 @@ export function DateStepper({
         className={arrowCls}
         aria-label="이전 날짜"
       >
-        ◀
+        <ChevronLeft className="size-4" />
       </button>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={inputCls}
-      />
+      <DatePicker value={value} onChange={onChange} disabled={disabled} />
       <button
         type="button"
         onClick={() => onChange(shift(value, 1))}
@@ -47,7 +43,7 @@ export function DateStepper({
         className={arrowCls}
         aria-label="다음 날짜"
       >
-        ▶
+        <ChevronRight className="size-4" />
       </button>
     </span>
   );

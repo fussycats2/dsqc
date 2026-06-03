@@ -6,6 +6,7 @@ import { Download, Loader2, Printer, Save, Send, Upload } from "lucide-react";
 import { fmtWeight } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { DateStepper } from "@/components/DateStepper";
+import { DatePicker } from "@/components/DatePicker";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -47,9 +48,8 @@ type C =
   | { k: "calc"; a: string; span?: number; cls?: string }
   | { k: "e"; span?: number; b?: boolean };
 
-// 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지(대시보드와 동일)
-const lockedDateCls =
-  "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
+// 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜) 잠금 안내(대시보드와 동일)
+const lockedTitle = "작업일에 따라 자동 설정 (상단 작업일에서 변경)";
 
 export function SettlementView({ workDate, initial }: { workDate: string; initial: CellMap }) {
   const toStr = (d: CellMap): Record<string, string> => {
@@ -117,32 +117,35 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const tCls = `${bd} px-1 py-[3px] text-[10px] leading-tight`;
   const calcCls = `${bd} bg-slate-50/70 px-1 py-[3px] text-right text-[10px] font-medium tabular-nums dark:bg-neutral-800/40 print:bg-transparent`;
 
-  const inEl = (a: string) => {
-    const tint = preserveSet.has(a)
+  // 전일값(이월=sky)·보존값(위탁·고정=amber) 셀 배경색.
+  //  input(bg-transparent)이 아니라 감싼 <td>에 칠한다 — 둘 다 background-color라 input에 같이 주면
+  //  bg-transparent가 tint를 덮어써 색이 안 보였음. td에 칠하고 input은 투명이라 비쳐 보인다.
+  const tintOf = (a: string) =>
+    preserveSet.has(a)
       ? "bg-amber-50 dark:bg-amber-900/15 print:bg-transparent"
       : carriedSet.has(a)
         ? "bg-sky-50 dark:bg-sky-900/15 print:bg-transparent"
         : "";
-    return (
-      <input value={commaFmt(vals[a] ?? "")} inputMode="decimal" data-cell={a}
-        onChange={(e) => {
-          const r = e.target.value.replace(/,/g, "");
-          if (r === "" || r === "-" || /^-?\d*\.?\d{0,2}$/.test(r)) set(a, r);
-        }}
-        onBlur={(e) => {
-          const r = e.target.value.replace(/,/g, "");
-          if (r !== "" && r !== "-" && !isNaN(Number(r))) set(a, Number(r).toFixed(2));
-        }}
-        className={`w-full bg-transparent px-1 py-[3px] text-right text-[10px] tabular-nums outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 ${tint}`} />
-    );
-  };
+
+  const inEl = (a: string) => (
+    <input value={commaFmt(vals[a] ?? "")} inputMode="decimal" data-cell={a}
+      onChange={(e) => {
+        const r = e.target.value.replace(/,/g, "");
+        if (r === "" || r === "-" || /^-?\d*\.?\d{0,2}$/.test(r)) set(a, r);
+      }}
+      onBlur={(e) => {
+        const r = e.target.value.replace(/,/g, "");
+        if (r !== "" && r !== "-" && !isNaN(Number(r))) set(a, Number(r).toFixed(2));
+      }}
+      className="w-full bg-transparent px-1 py-[3px] text-right text-[10px] tabular-nums outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40" />
+  );
 
   const renderCell = (c: C, key: number) => {
     if (c.k === "e") return <td key={key} colSpan={c.span} className={c.b ? bd : "border-0 print:border-0"} />;
     if (c.k === "h") return <td key={key} colSpan={c.span} className={`${thCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "rh") return <td key={key} colSpan={c.span} className={`${rhCls} ${c.cls ?? ""}`}>{c.t}</td>;
     if (c.k === "t") return <td key={key} colSpan={c.span} className={`${tCls} ${c.cls ?? ""}`}>{c.t}</td>;
-    if (c.k === "in") return <td key={key} className={`${bd} p-0`}>{inEl(c.a)}</td>;
+    if (c.k === "in") return <td key={key} className={`${bd} p-0 ${tintOf(c.a)}`}>{inEl(c.a)}</td>;
     return <td key={key} colSpan={c.span} className={`${calcCls} ${c.cls ?? ""}`}>{fmtCalc(f[c.a]) || " "}</td>;
   };
 
@@ -299,7 +302,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span className="text-sm font-semibold">📅 마감·이월</span>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-slate-500">마감일</label>
-          <input type="date" value={src} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
+          <DatePicker value={src} locked title={lockedTitle} />
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
           <DateStepper value={carry} onChange={setCarry} />
@@ -310,7 +313,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span className="text-slate-200 dark:text-neutral-700">|</span>
         <span className="text-sm font-semibold">🔁 날짜 변경</span>
         <div className="flex items-center gap-1.5">
-          <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedDateCls} />
+          <DatePicker value={from} locked title={lockedTitle} />
           <span className="text-slate-300">→</span>
           <DateStepper value={to} onChange={setTo} />
           <Button size="sm" variant="outline" onClick={doMove} disabled={pending}>변경</Button>

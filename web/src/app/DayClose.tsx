@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DateStepper } from "@/components/DateStepper";
+import { DatePicker } from "@/components/DatePicker";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -18,13 +19,13 @@ const nextDay = (d: string) => {
 // 표시용: yyyy-mm-dd → yyyy/mm/dd
 const fmtD = (s?: string | null) => (s ? s.replaceAll("-", "/") : "");
 
-// 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜)는 직접 수정 불가 — 오입력 방지
-const lockedCls = "rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400";
 const brand = "bg-[#4b3526] text-white hover:bg-[#3a281c]";
+// 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜) 잠금 안내
+const lockedTitle = "작업일에 따라 자동 설정 (상단 작업일에서 변경)";
 
 type ConfirmBox = { title: string; lines: string[]; yesLabel: string; onYes: () => void; infoOnly?: boolean };
 
-export function DayClose({ workDate, stock18, stock14 }: { workDate: string; stock18: string; stock14: string }) {
+export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: string; lotCount: number; stock18: string; stock14: string }) {
   const [src, setSrc] = useState(workDate);
   const [carry, setCarry] = useState(nextDay(workDate));
   const [from, setFrom] = useState(workDate);
@@ -103,11 +104,31 @@ export function DayClose({ workDate, stock18, stock14 }: { workDate: string; sto
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* 이 작업일에 데이터가 몇 건 있는지 — 로딩(불러오는 중)과 진짜 0건을 구분하는 표시 */}
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${
+            lotCount > 0
+              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400"
+          }`}
+          title="이 작업일에 입력된 데이터 건수 (0이면 실제로 데이터가 없는 날)"
+        >
+          <span className="tabular-nums">{fmtD(workDate)}</span>
+          <span className="text-slate-300 dark:text-neutral-600">·</span>
+          {lotCount > 0 ? (
+            <>
+              데이터 <b className="tabular-nums">{lotCount}</b>건
+            </>
+          ) : (
+            "데이터 없음"
+          )}
+        </span>
+
         {/* 일마감 */}
         <span className="text-sm font-semibold">📅 일마감</span>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-slate-500 dark:text-neutral-400">마감일</label>
-          <input type="date" value={src} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedCls} />
+          <DatePicker value={src} locked title={lockedTitle} />
           <span className="text-slate-300 dark:text-neutral-600">→</span>
           <label className="text-xs text-slate-500 dark:text-neutral-400">이월일</label>
           <DateStepper value={carry} onChange={setCarry} />
@@ -120,7 +141,7 @@ export function DayClose({ workDate, stock18, stock14 }: { workDate: string; sto
         <span className="text-slate-200 dark:text-neutral-700">|</span>
         <span className="text-sm font-semibold">🔁 날짜 변경</span>
         <div className="flex items-center gap-1.5">
-          <input type="date" value={from} disabled readOnly title="작업일에 따라 자동 설정 (상단 작업일에서 변경)" className={lockedCls} />
+          <DatePicker value={from} locked title={lockedTitle} />
           <span className="text-slate-300 dark:text-neutral-600">→</span>
           <DateStepper value={to} onChange={setTo} />
           <Button size="sm" variant="outline" onClick={doMove} disabled={pending}>변경</Button>

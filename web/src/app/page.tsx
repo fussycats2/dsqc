@@ -314,6 +314,9 @@ export default async function Home() {
     getProcesses(),
   ]);
 
+  // 선택 작업일에 실제로 들어온 lot 행 수 — "데이터 없음"인지 "아직 안 불러왔는지" 구분용(0이면 진짜 없음)
+  const lotCount = (lotData ?? []).length;
+
   // lots → 공정별 집계 (선택 작업일)
   const agg = new Map<string, Agg>();
   const getA = (id: string) => {
@@ -387,58 +390,63 @@ export default async function Home() {
         </p>
       </div>
 
-      {/* 일마감 + 날짜 변경 (18K·14K 재고는 이 박스 오른쪽에 표시) */}
-      <DayClose
-        workDate={workDate}
-        stock18={fmtWeight(sumStock(work("18K")))}
-        stock14={fmtWeight(sumStock(work("14K")))}
-      />
+      {/* 일마감 박스 + 알림(미출고·중량오차)을 하나의 sticky 컨테이너로 묶어 함께 상단 고정.
+          스크롤해도 둘 다 헤더 바로 아래에 붙어 따라오고, 내부 space-y-2로 둘 사이 간격을 좁게 유지. */}
+      <div className="sticky top-[49px] z-10 -mx-6 -mt-2 space-y-2 border-b border-slate-100 bg-white/90 px-6 py-2 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+        {/* 일마감 + 날짜 변경 (18K·14K 재고는 이 박스 오른쪽에 표시) */}
+        <DayClose
+          workDate={workDate}
+          lotCount={lotCount}
+          stock18={fmtWeight(sumStock(work("18K")))}
+          stock14={fmtWeight(sumStock(work("14K")))}
+        />
 
-      {/* 알림(미출고·중량오차)만 sticky 고정 — 알림이 있을 때만 렌더. 위 일마감 박스와 간격은 -mt-2로 좁힘 */}
-      {(pendingTotal > 0 || errs.length > 0) && (
-      <div className="sticky top-[49px] z-10 -mx-6 -mt-2 space-y-3 border-b border-slate-100 bg-white/90 px-6 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
-        {pendingTotal > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
-              ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {pending.map(({ p, cnt }) => (
-                <ClientLink
-                  key={p.id}
-                  href={`/process/${p.id}`}
-                  className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800"
-                >
-                  {p.name} <b className="tabular-nums">{cnt}</b>건
-                </ClientLink>
-              ))}
-            </div>
-          </div>
-        )}
-        {errs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 dark:border-rose-800/60 dark:bg-rose-950/30">
-            <div className="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
-              ⚠️ 공정 중량오차 {errs.length}건 — 집계 불일치 확인 필요
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {errs.map(({ p, err }) => (
-                <ClientLink
-                  key={p.id}
-                  href={`/process/${p.id}`}
-                  className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100 dark:border-rose-700 dark:bg-neutral-900 dark:text-rose-200 dark:hover:bg-neutral-800"
-                >
-                  {p.name}{" "}
-                  <b className="tabular-nums">
-                    {err > 0 ? "+" : ""}
-                    {fmtWeight(err)}
-                  </b>
-                </ClientLink>
-              ))}
-            </div>
+        {/* 알림은 있을 때만 렌더 — 일마감 박스 바로 아래에 좁은 간격으로 표시 */}
+        {(pendingTotal > 0 || errs.length > 0) && (
+          <div className="space-y-2">
+            {pendingTotal > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+                <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {pending.map(({ p, cnt }) => (
+                    <ClientLink
+                      key={p.id}
+                      href={`/process/${p.id}`}
+                      className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-neutral-900 dark:text-amber-200 dark:hover:bg-neutral-800"
+                    >
+                      {p.name} <b className="tabular-nums">{cnt}</b>건
+                    </ClientLink>
+                  ))}
+                </div>
+              </div>
+            )}
+            {errs.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 dark:border-rose-800/60 dark:bg-rose-950/30">
+                <div className="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
+                  ⚠️ 공정 중량오차 {errs.length}건 — 집계 불일치 확인 필요
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {errs.map(({ p, err }) => (
+                    <ClientLink
+                      key={p.id}
+                      href={`/process/${p.id}`}
+                      className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100 dark:border-rose-700 dark:bg-neutral-900 dark:text-rose-200 dark:hover:bg-neutral-800"
+                    >
+                      {p.name}{" "}
+                      <b className="tabular-nums">
+                        {err > 0 ? "+" : ""}
+                        {fmtWeight(err)}
+                      </b>
+                    </ClientLink>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
-      )}
 
       <Section title="공정 (연마·뻥·빠우)">
         <ProcessCard

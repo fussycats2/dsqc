@@ -1,7 +1,9 @@
 "use client";
 
+import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FileSpreadsheet } from "lucide-react";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { TabBar } from "@/components/TabBar";
 import { DateToggle } from "@/components/DateToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -16,6 +18,7 @@ import type { Process } from "@/lib/types";
 function HeaderNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const [pending, start] = useTransition();
   return (
     <nav className="flex items-center gap-1">
       <PrintModal />
@@ -23,12 +26,13 @@ function HeaderNav() {
         type="button"
         size="sm"
         variant={pathname === "/settlement" ? "secondary" : "ghost"}
-        onClick={() => router.push("/settlement")}
+        onClick={() => start(() => router.push("/settlement"))}
         onMouseEnter={() => router.prefetch("/settlement")}
         onFocus={() => router.prefetch("/settlement")}
       >
         <FileSpreadsheet />결산서
       </Button>
+      <LoadingOverlay show={pending} />
     </nav>
   );
 }
@@ -41,7 +45,8 @@ export function Chrome({ processes, children }: { processes: Process[]; children
   return (
     <>
       <SessionGuard />
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
+      {/* z-30: 본문 화면의 sticky 툴바(z-20)보다 위 — 헤더 작업일 달력 팝오버가 안 가리게 */}
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
         <span className="text-sm font-bold">dsqc · 제조공정 관리</span>
         <div className="flex items-center gap-4">
           <DateToggle />
