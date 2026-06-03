@@ -449,12 +449,23 @@ export async function tagAdjust(
   return { ok: true, adjusted: valid.length };
 }
 
-// ───────── Tag 확정 (Module36, 검수 전용): 실중량 있고 Tag중량 비면 Tag중량=Tag ─────────
-export async function tagConfirm(processId: string) {
+// ───────── Tag 확정 (Module36 변형): 검수 '모든 파트'의 현재 작업일에 일괄 적용 ─────────
+//  · 원본 엑셀(Module36)은 활성 시트(파트) 1개에만 적용했으나, 웹은 검수 전체 파트에 일괄 적용.
+//  · 행 단위 규칙은 원본과 동일: 실중량(weight) 있고 Tag중량(tag_weight) 비고 Tag(tag) 있으면 Tag중량=Tag.
+//  · 화면에 보이는 현재 작업일(getWorkDate)로 한정 — 과거 날짜 행을 건드리지 않음.
+export async function tagConfirm() {
   const supabase = await createClient();
+  const workDate = await getWorkDate();
+
+  // 검수(is_inspection) 공정 전체
+  const { data: insp } = await supabase
+    .from("processes").select("id").eq("is_inspection", true);
+  const inspIds = (insp ?? []).map((p) => p.id as string);
+  if (inspIds.length === 0) return { ok: true, filled: 0 };
+
   const { data } = await supabase
     .from("lots").select("id, tag")
-    .eq("process_id", processId).eq("side", "out")
+    .in("process_id", inspIds).eq("work_date", workDate).eq("side", "out")
     .not("weight", "is", null).is("tag_weight", null).not("tag", "is", null);
   const rows = (data ?? []) as { id: string; tag: number | null }[];
   // 값(Tag)이 행마다 달라 단일 update 불가 → 병렬 실행
@@ -463,7 +474,7 @@ export async function tagConfirm(processId: string) {
   );
   const err = results.find((r) => r.error)?.error;
   if (err) return { error: err.message };
-  revalidatePath(`/process/${processId}`);
+  revalidatePath("/", "layout"); // 여러 검수 파트·대시보드·결산 모두 갱신
   return { ok: true, filled: rows.length };
 }
 

@@ -991,7 +991,11 @@ export function ProcessView({
               </ActionBtn>
               {process.is_inspection && (
                 <ActionBtn tone="default" disabled={pending}
-                  onClick={() => run(() => tagConfirm(process.id), (r) => `Tag 확정 ${r.filled}건`)}>
+                  onClick={() => setConfirmBox({
+                    text: "⚠️ Tag 확정은 이 시트만이 아니라 ‘검수 모든 파트’의 현재 작업일 출고행에 일괄 적용됩니다. (실중량이 있고 Tag중량이 빈 행의 Tag중량을 Tag값으로 채움) 실행할까요?",
+                    yesLabel: "검수 전체 적용",
+                    onYes: () => run(() => tagConfirm(), (r) => `Tag 확정 ${r.filled}건`),
+                  })}>
                   Tag 확정
                 </ActionBtn>
               )}
