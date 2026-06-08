@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Printer, Save, Send, Upload } from "lucide-react";
 import { fmtWeight } from "@/lib/types";
@@ -70,11 +70,25 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // 자동저장: 사용자가 입력하면 1.5초 후 자동 저장(debounce). '저장' 버튼·나가기 경고는 보조.
+  //  · 사용자 입력(set/붙여넣기)만 dirty로 표시 → 초기 로드·날짜 변경·결산전송·가져오기 등 프로그래밍 변경은 제외.
+  const dirtyRef = useRef(false);            // 동기 접근(타이머·beforeunload)
+  const [dirty, setDirty] = useState(false); // UI 표시용
+  const [autosaving, setAutosaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const markDirty = () => { dirtyRef.current = true; setDirty(true); };
+  const clearDirty = () => { dirtyRef.current = false; setDirty(false); };
+  const stampNow = () => {
+    const d = new Date();
+    setSavedAt(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+  };
+
   // 엑셀식 격자 조작(방향키 이동·Enter·드래그 선택·복사·붙여넣기) — input[data-cell] 대상
   const gridRef = useRef<HTMLDivElement>(null);
   // 붙여넣기: 기준 주소(예: "B5")에서 열문자+1·행번호+1로 펴서 채움. 입력칸이 있는 주소만 반영.
   const onGridPaste = (anchorCell: string, matrix: string[][]) => {
     const m = anchorCell.match(/^([A-M])(\d+)$/);
+    markDirty();
     setVals((prev) => {
       const next = { ...prev };
       if (!m) { next[anchorCell] = (matrix[0]?.[0] ?? "").replace(/,/g, ""); return next; }
@@ -97,11 +111,12 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   if (prevKey.initial !== initial || prevKey.workDate !== workDate) {
     setPrevKey({ initial, workDate });
     setVals(toStr(initial));
+    clearDirty(); // 작업일/데이터 prop 변경(서버 재조회·가져오기)은 자동저장 트리거 아님
     setSrc(workDate); setCarry(nextDay(workDate));
     setFrom(workDate); setTo(nextDay(workDate));
   }
 
-  const set = (a: string, v: string) => setVals((p) => ({ ...p, [a]: v }));
+  const set = (a: string, v: string) => { markDirty(); setVals((p) => ({ ...p, [a]: v })); };
   const numMap = useMemo(() => {
     const o: CellMap = {};
     for (const [k, v] of Object.entries(vals)) o[k] = v === "" ? null : Number(v);
@@ -109,6 +124,27 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   }, [vals]);
   const f = useMemo(() => derive(numMap), [numMap]);
   const fmtCalc = (v: number | undefined) => (v ? fmtWeight(v) : "");
+
+  // 자동저장(debounce 1.5초) — 입력이 이어지면 타이머가 갱신돼, 멈춘 뒤 1회만 저장.
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+    const t = setTimeout(() => {
+      if (!dirtyRef.current) return; // 그새 수동저장/리셋되면 스킵(중복 저장 방지)
+      setAutosaving(true);
+      saveSettlement(workDate, numMap).then((r) => {
+        setAutosaving(false);
+        if (!r?.error) { clearDirty(); stampNow(); }
+      });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [numMap, workDate]);
+
+  // 나가기 경고(보조) — 저장 안 된 변경이 있는 채로 새로고침·창닫기 시 브라우저 확인창.
+  useEffect(() => {
+    const h = (e: BeforeUnloadEvent) => { if (dirtyRef.current) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, []);
 
   // ───────── 셀 스타일 ─────────
   const bd = "border border-slate-400 dark:border-neutral-500";
@@ -211,12 +247,14 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   // ───────── 저장 / 이월 / 날짜변경 ─────────
   const doSave = () => start(async () => {
     const r = await saveSettlement(workDate, numMap);
+    if (!r.error) { clearDirty(); stampNow(); }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(workDate)} 결산서 저장됨`);
   });
   const doPush = () => start(async () => {
     const r = await pushFromLots(workDate, numMap);
     if (r.error) { setMsg(`오류: ${r.error}`); return; }
     if (r.data) setVals(toStr(r.data));
+    clearDirty(); stampNow(); // 결산전송도 DB 저장(병합 upsert)이라 저장 완료 상태
     setMsg(`${fmtD(workDate)} 결산전송 완료 — 입고·출고·분석투입량 자동 반영`);
   });
   // 엑셀 가져오기 — 현재 작업일로 업로드(그 날짜에 데이터 있으면 서버가 취소)
@@ -281,6 +319,9 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           <Button size="sm" onClick={doPush} disabled={pending} className="bg-indigo-600 text-white hover:bg-indigo-700">
             {pending ? <Loader2 className="animate-spin" /> : <Send />}결산전송
           </Button>
+          <span className="min-w-[68px] text-right text-xs text-slate-400 dark:text-neutral-500">
+            {autosaving ? "저장 중…" : dirty ? "● 변경됨" : savedAt ? `저장됨 ${savedAt}` : ""}
+          </span>
           <Button size="sm" onClick={doSave} disabled={pending} className="bg-[#4b3526] text-white hover:bg-[#3a281c]">
             {pending ? <Loader2 className="animate-spin" /> : <Save />}저장
           </Button>

@@ -33,6 +33,8 @@ export default function LoginPage() {
       setBusy(false);
       return;
     }
+    // 접속 시 작업일을 항상 오늘로 — 이전 세션에서 바꿔둔 작업일 쿠키 제거(없으면 서버가 오늘로 시작)
+    document.cookie = "dsqc.workDate=; path=/; max-age=0";
     // 서버 컴포넌트가 새 세션 쿠키로 다시 렌더되도록 전체 새로고침
     window.location.assign("/");
   };

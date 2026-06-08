@@ -1,0 +1,23 @@
+# 프로젝트 루트 — 실제 앱은 web/ (web/.gitignore가 별도 관리).
+# 루트에서 도구를 실행할 때 생기는 빌드 산출물·캐시·메타데이터를 추적하지 않음.
+
+# 의존성 / 빌드 산출물
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# 테스트 / 캐시
+coverage/
+.vite/
+
+# WSL 다운로드 메타데이터 (Alternate Data Stream)
+*:Zone.Identifier
+
+# 로그 / 임시
+*.log
+*.tsbuildinfo
+
+# OS / 에디터
+.DS_Store
