@@ -21,6 +21,8 @@ import {
   DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ClientLink } from "@/components/ClientLink";
 import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
@@ -199,7 +201,7 @@ function LotTable({
           <thead>
             <tr className="text-slate-500 dark:text-neutral-400">
               <th style={{ top: headTop }} className="sticky z-10 bg-slate-100 px-1 py-1.5 dark:bg-neutral-800">
-                <input type="checkbox" checked={allSel} onChange={(e) => onToggleAll(e.target.checked)} />
+                <Checkbox checked={allSel} onCheckedChange={(v) => onToggleAll(v === true)} />
               </th>
               {columns.map((c, i) => {
                 // Tag수정/중량/로스 + 시간(투입시간·이관/출고시간) 헤더는 폭이 좁아 줄바꿈 → 글자만 축소·한 줄 고정
@@ -231,8 +233,8 @@ function LotTable({
                     } ${r.locked ? "opacity-50" : "hover:bg-amber-50/60 dark:hover:bg-neutral-800/60"}`}>
                     {/* 체크박스 칸은 네이티브 토글이 처리 → 행 onClick과 중복 방지 위해 전파 중단 */}
                     <td className="px-1 py-0.5 text-center" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={checked}
-                        onChange={(ev) => onToggle(r.id, ev.target.checked)} />
+                      <Checkbox checked={checked}
+                        onCheckedChange={(v) => onToggle(r.id, v === true)} />
                     </td>
                     {columns.map((c, i) => {
                       const numeric = isNumKind(c.kind) || !!c.computed;
@@ -258,23 +260,27 @@ function LotTable({
                         return (
                           <td key={i} className={`${cellCls} px-1.5 py-1 ${align}`}
                             onClick={(e) => e.stopPropagation()}>
-                            <button type="button" onClick={() => onTrace(r.id)}
-                              title={`계보 추적${r.serial ? ` · ${r.serial}` : ""}`}
-                              className="group/serial -mx-1 inline-flex max-w-full items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-200/60 dark:hover:bg-neutral-700/60">
-                              {locked && <span className="shrink-0">🔒</span>}
-                              <span className="min-w-0 truncate font-medium tabular-nums text-slate-700 transition-colors group-hover/serial:text-blue-600 dark:text-neutral-200 dark:group-hover/serial:text-blue-400">
-                                {fmtCell(r[c.key], c.kind) || "(번호없음)"}
-                              </span>
-                              {/* 계보(분기) 아이콘 — 평소엔 옅게, 호버 시 블루로 강조 */}
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                                strokeLinecap="round" strokeLinejoin="round" aria-hidden
-                                className="h-3 w-3 shrink-0 text-slate-300 transition-colors group-hover/serial:text-blue-500 dark:text-neutral-600 dark:group-hover/serial:text-blue-400">
-                                <line x1="6" x2="6" y1="3" y2="15" />
-                                <circle cx="18" cy="6" r="3" />
-                                <circle cx="6" cy="18" r="3" />
-                                <path d="M18 9a9 9 0 0 1-9 9" />
-                              </svg>
-                            </button>
+                            <Tooltip delayDuration={300}>
+                              <TooltipTrigger asChild>
+                                <button type="button" onClick={() => onTrace(r.id)}
+                                  className="group/serial -mx-1 inline-flex max-w-full items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-200/60 dark:hover:bg-neutral-700/60">
+                                  {locked && <span className="shrink-0">🔒</span>}
+                                  <span className="min-w-0 truncate font-medium tabular-nums text-slate-700 transition-colors group-hover/serial:text-blue-600 dark:text-neutral-200 dark:group-hover/serial:text-blue-400">
+                                    {fmtCell(r[c.key], c.kind) || "(번호없음)"}
+                                  </span>
+                                  {/* 계보(분기) 아이콘 — 평소엔 옅게, 호버 시 블루로 강조 */}
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                                    strokeLinecap="round" strokeLinejoin="round" aria-hidden
+                                    className="h-3 w-3 shrink-0 text-slate-300 transition-colors group-hover/serial:text-blue-500 dark:text-neutral-600 dark:group-hover/serial:text-blue-400">
+                                    <line x1="6" x2="6" y1="3" y2="15" />
+                                    <circle cx="18" cy="6" r="3" />
+                                    <circle cx="6" cy="18" r="3" />
+                                    <path d="M18 9a9 9 0 0 1-9 9" />
+                                  </svg>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>계보 추적{r.serial ? ` · ${r.serial}` : ""}</TooltipContent>
+                            </Tooltip>
                           </td>
                         );
                       // autoFit 칸: 줄바꿈 없이 셀 폭에 맞춰 글자 자동 축소

@@ -57,14 +57,16 @@ export async function updateSession(request: NextRequest) {
   if (user) {
     const seen = Number(request.cookies.get("last_seen")?.value);
     if (seen && Date.now() - seen > IDLE_MS) {
-      // 만료 → Supabase 인증 쿠키 정리 후 로그인 화면으로
+      // 만료 → Supabase 인증 쿠키 정리 후 로그인 화면으로.
+      //  reason=timeout은 붙이지 않는다(조용히): 서버 진입 시점엔 "세션 켜둔 채 자리비움"과
+      //  "오래전 닫고 새로 접속"을 구분할 수 없어, 새로 로그인하러 온 사람에게도 '자동 로그아웃'
+      //  안내가 떠 어색했다. '자동 로그아웃' 안내는 앱을 보던 중 끊긴 경우(SessionGuard)만 띄운다.
       let res: NextResponse;
       if (path === "/login") {
         res = NextResponse.next({ request });
       } else {
         const url = request.nextUrl.clone();
         url.pathname = "/login";
-        url.search = "?reason=timeout";
         res = NextResponse.redirect(url);
       }
       for (const c of request.cookies.getAll()) {

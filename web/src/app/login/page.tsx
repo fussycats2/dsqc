@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
 const DEFAULT_EMAIL = process.env.NEXT_PUBLIC_LOGIN_EMAIL ?? "";
@@ -9,9 +11,21 @@ const DEFAULT_EMAIL = process.env.NEXT_PUBLIC_LOGIN_EMAIL ?? "";
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME ?? "";
 const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA ?? "";
 
+// Supabase 인증 에러(영문) → 직원이 읽을 한글 안내로 매핑(원문 노출 방지)
+function krLoginError(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes("invalid login credentials")) return "비밀번호가 올바르지 않습니다.";
+  if (m.includes("email not confirmed")) return "계정 인증이 필요합니다. 관리자에게 문의하세요.";
+  if (m.includes("rate limit") || m.includes("too many") || m.includes("for security purposes"))
+    return "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.";
+  if (m.includes("failed to fetch") || m.includes("network")) return "네트워크 연결을 확인해 주세요.";
+  return "로그인에 실패했습니다. 다시 시도해 주세요.";
+}
+
 export default function LoginPage() {
-  const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [caps, setCaps] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // 유휴(5시간) 자동 로그아웃 복귀 안내 — URL 파라미터에서 1회 도출(effect 불필요, 변하지 않음)
@@ -27,9 +41,10 @@ export default function LoginPage() {
     setErr(null);
     setBusy(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+    // 공용 계정 — 이메일은 고정값(DEFAULT_EMAIL), 비밀번호만 입력받는다
+    const { error } = await supabase.auth.signInWithPassword({ email: DEFAULT_EMAIL, password: pw });
     if (error) {
-      setErr(error.message);
+      setErr(krLoginError(error.message));
       setBusy(false);
       return;
     }
@@ -52,31 +67,51 @@ export default function LoginPage() {
         <p className="text-center text-xs text-slate-400 dark:text-neutral-500">공용 계정으로 로그인</p>
 
         {notice && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+          <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
             {notice}
           </p>
         )}
 
-        <label className="block">
-          <span className="text-xs text-slate-500 dark:text-neutral-400">이메일</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-            autoComplete="username"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#7a5c43] dark:border-neutral-700 dark:bg-neutral-900" />
-        </label>
+        {/* 공용 계정(고정) — 표시 전용. 비밀번호만 입력받는다.
+            autoComplete(브라우저 비번 저장)용 username은 hidden input으로 제공. */}
+        {DEFAULT_EMAIL && (
+          <div className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-neutral-800">
+            <span className="text-slate-400 dark:text-neutral-500">계정</span>
+            <span className="font-medium text-slate-600 dark:text-neutral-300">{DEFAULT_EMAIL}</span>
+          </div>
+        )}
+        <input type="email" value={DEFAULT_EMAIL} readOnly hidden autoComplete="username" />
 
         <label className="block">
           <span className="text-xs text-slate-500 dark:text-neutral-400">비밀번호</span>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} required autoFocus
-            autoComplete="current-password"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#7a5c43] dark:border-neutral-700 dark:bg-neutral-900" />
+          <div className="relative mt-1">
+            <input type={showPw ? "text" : "password"} value={pw}
+              onChange={(e) => setPw(e.target.value)} required autoFocus
+              autoComplete="current-password"
+              onKeyDown={(e) => setCaps(e.getModifierState("CapsLock"))}
+              onKeyUp={(e) => setCaps(e.getModifierState("CapsLock"))}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm outline-none focus:border-[#7a5c43] dark:border-neutral-700 dark:bg-neutral-900" />
+            <button type="button" tabIndex={-1} onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? "비밀번호 숨기기" : "비밀번호 보기"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-neutral-200">
+              {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
         </label>
 
-        {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40">{err}</p>}
+        {caps && (
+          <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+            ⇪ Caps Lock이 켜져 있습니다.
+          </p>
+        )}
 
-        <button type="submit" disabled={busy}
-          className="w-full rounded-lg bg-[#4b3526] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3a281c] disabled:opacity-50">
+        {err && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40">{err}</p>}
+
+        <Button type="submit" disabled={busy}
+          className="w-full bg-[#4b3526] py-2.5 text-sm font-medium text-white hover:bg-[#3a281c]">
+          {busy && <Loader2 className="animate-spin" />}
           {busy ? "로그인 중…" : "로그인"}
-        </button>
+        </Button>
       </form>
 
       {/* 빌드(배포) 시각 — 좌하단 */}

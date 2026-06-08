@@ -72,12 +72,15 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
 
   // 자동저장: 사용자가 입력하면 1.5초 후 자동 저장(debounce). '저장' 버튼·나가기 경고는 보조.
   //  · 사용자 입력(set/붙여넣기)만 dirty로 표시 → 초기 로드·날짜 변경·결산전송·가져오기 등 프로그래밍 변경은 제외.
-  const dirtyRef = useRef(false);            // 동기 접근(타이머·beforeunload)
-  const [dirty, setDirty] = useState(false); // UI 표시용
+  const [dirty, setDirty] = useState(false); // UI 표시 + 자동저장 판정
+  // 타이머·beforeunload의 동기 접근용 ref — 아래 effect로 dirty(state)에 동기화.
+  //  (markDirty/clearDirty가 렌더 중 조정 블록에서도 불리므로 ref를 직접 쓰지 않고 state만 건드린다.)
+  const dirtyRef = useRef(false);
   const [autosaving, setAutosaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const markDirty = () => { dirtyRef.current = true; setDirty(true); };
-  const clearDirty = () => { dirtyRef.current = false; setDirty(false); };
+  const markDirty = () => setDirty(true);
+  const clearDirty = () => setDirty(false);
+  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const stampNow = () => {
     const d = new Date();
     setSavedAt(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
