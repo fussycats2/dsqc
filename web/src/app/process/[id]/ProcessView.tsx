@@ -605,7 +605,7 @@ function TagAdjustModal({
                   <td className="px-2 py-1 text-slate-500">{r.description ?? ""}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{fmtWeight(r.tag)}</td>
                   <td className="px-2 py-1 text-center">
-                    <NumberInput value={raw ?? ""} kind="weight" onChange={(v) => set(r.id, v)} className={inp} />
+                    <NumberInput value={raw ?? ""} kind="int" onChange={(v) => set(r.id, v)} className={inp} />
                   </td>
                   <td className="px-2 py-1 text-right tabular-nums">{tw == null ? "—" : fmtWeight(tw)}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{tl == null ? "—" : fmtWeight(tl)}</td>

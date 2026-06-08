@@ -115,7 +115,7 @@ const IO_OUT: ColDef[] = [
   { key: "raw_weight", label: "원중량", kind: "weight", width: 62 },
   { key: "note", label: "비고", kind: "text", width: 53, autoFit: true },
   { key: "prev_part_name", label: "이전파트", kind: "text", width: 105, autoFit: true }, // 넘치면 글자 자동 축소
-  { key: "tag_fixed", label: "Tag수정", kind: "weight", width: 56 },  // 표=Tag보정 모달 전용, 모달=수정 가능
+  { key: "tag_fixed", label: "Tag수정", kind: "int", width: 56 },  // Tag 개수(정수) — 표·모달 모두 소수점 없음
   { key: "tag_weight", label: "Tag중량", kind: "weight", width: 56 }, // Tag보정=ROUNDDOWN 자동
   { key: "tag_loss", label: "Tag로스", kind: "weight", width: 56 },   // Tag보정=Tag−Tag중량 자동
   { key: "weight", label: "출고중량", kind: "weight", width: 66, computed: "ship", bold: true },
