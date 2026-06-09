@@ -41,6 +41,9 @@ export default function LoginPage() {
     setErr(null);
     setBusy(true);
     const supabase = createClient();
+    // 이전 세션의 잔여 토큰(만료·무효)이 쿠키에 남아 있으면 첫 로그인 시도가 실패할 수 있어,
+    //  로그인 직전에 로컬 세션을 비운다(scope:'local' = 이 브라우저만, 서버·다른 기기 세션엔 영향 없음).
+    await supabase.auth.signOut({ scope: "local" });
     // 공용 계정 — 이메일은 고정값(DEFAULT_EMAIL), 비밀번호만 입력받는다
     const { error } = await supabase.auth.signInWithPassword({ email: DEFAULT_EMAIL, password: pw });
     if (error) {

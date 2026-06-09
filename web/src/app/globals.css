@@ -141,6 +141,12 @@ body {
     color: inherit;
     background-color: transparent;
   }
+
+  /* 브라우저 기본 비밀번호 표시/지우기 버튼 숨김 — 커스텀 눈 아이콘과 중복 방지(Edge·IE ::-ms-reveal 등) */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none;
+  }
 }
 
 /* 인쇄: 흰 배경/검은 글자로 강제, 표 전체 출력 */
