@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, ChevronUp } from "lucide-react";
 import type { Process } from "@/lib/types";
 import {
@@ -63,6 +63,22 @@ export function TabBar({ processes }: { processes: Process[] }) {
   const go = (href: string) => startNav(() => router.push(href));
   // 호버/포커스 시 라우트 prefetch → 클릭 시 콜드 렌더 대기 없이 즉시 전환(체감 속도 개선)
   const warm = (href: string) => router.prefetch(href);
+
+  // 분류 메뉴(부서·검수·연마·빠우·뻥)는 호버로 펼치고 마우스가 나가면 닫음 — 어느 그룹이 열렸는지 key로 추적.
+  // 터치 기기엔 호버가 없으므로 pointerType이 'touch'면 무시 → 기존 클릭(탭) 동작 그대로 유지.
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+  };
+  const openGroup = (key: string) => { cancelClose(); setOpenKey(key); };
+  // 살짝 지연 후 닫기 — 버튼과 펼친 패널 사이 간극을 건너는 잠깐 동안 닫히지 않도록(유예 시간).
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpenKey(null), 150);
+  };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
   const entry = processes.find((p) => p.schema_type === "entry");
   const activeProcess = processes.find((p) => pathname === `/process/${p.id}`);
 
@@ -93,11 +109,18 @@ export function TabBar({ processes }: { processes: Process[] }) {
     const procs = processes.filter((p) => p.karat === karat && g.match(p));
     const isActiveGroup = !!activeProcess && activeProcess.karat === karat && g.match(activeProcess);
     return (
-      <DropdownMenu key={g.key}>
+      <DropdownMenu
+        key={g.key}
+        modal={false}
+        open={openKey === g.key}
+        onOpenChange={(o) => setOpenKey(o ? g.key : null)}
+      >
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             disabled={procs.length === 0}
+            onPointerEnter={(e) => { if (e.pointerType !== "touch") openGroup(g.key); }}
+            onPointerLeave={(e) => { if (e.pointerType !== "touch") scheduleClose(); }}
             className={`flex shrink-0 items-center justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${
               g.wide ? "w-16" : "min-w-[3.25rem]"
             } ${
@@ -110,7 +133,15 @@ export function TabBar({ processes }: { processes: Process[] }) {
             <ChevronUp className="size-3 opacity-60" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" sideOffset={6} className="max-h-[60vh] overflow-y-auto">
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          sideOffset={6}
+          className="max-h-[60vh] overflow-y-auto"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onPointerEnter={cancelClose}
+          onPointerLeave={(e) => { if (e.pointerType !== "touch") scheduleClose(); }}
+        >
           <DropdownMenuLabel>{karat} · {g.label}</DropdownMenuLabel>
           {procs.map((p) => {
             const active = pathname === `/process/${p.id}`;

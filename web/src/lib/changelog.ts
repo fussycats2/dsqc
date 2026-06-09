@@ -15,6 +15,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.2.1",
+    date: "2026-06-09",
+    title: "하단 메뉴 UX 개선 — 마우스 올리면 펼치기",
+    items: [
+      "하단 탭의 메뉴(부서·검수·연마·빠우·뻥)에 마우스를 올리면 위로 펼쳐지고, 메뉴 밖으로 마우스가 벗어나면 자동으로 닫힙니다. 기존처럼 버튼방식도 가능합니다.",
+    ],
+  },
+  {
     version: "v1.2.0",
     date: "2026-06-09",
     title: "행 선택 표시 개선 · 일련번호 안내 · 결산서 자동저장 안정화",
