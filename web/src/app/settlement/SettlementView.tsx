@@ -76,9 +76,14 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   // 타이머·beforeunload의 동기 접근용 ref — 아래 effect로 dirty(state)에 동기화.
   //  (markDirty/clearDirty가 렌더 중 조정 블록에서도 불리므로 ref를 직접 쓰지 않고 state만 건드린다.)
   const dirtyRef = useRef(false);
+  // 입력 세대 카운터 — 저장 요청이 '비행 중'일 때 새 입력이 있었는지 판별.
+  //  저장 시작 시 세대를 캡처하고, 응답 시 세대가 그대로일 때만 dirty를 지운다.
+  //  (없으면: 저장 비행 중 입력 → 응답의 clearDirty가 새 입력의 dirty까지 지워
+  //   '저장됨'으로 표시되지만 실제로는 저장 안 된 값이 생김)
+  const editGen = useRef(0);
   const [autosaving, setAutosaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const markDirty = () => setDirty(true);
+  const markDirty = () => { editGen.current += 1; setDirty(true); };
   const clearDirty = () => setDirty(false);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const stampNow = () => {
@@ -126,20 +131,38 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     return o;
   }, [vals]);
   const f = useMemo(() => derive(numMap), [numMap]);
-  const fmtCalc = (v: number | undefined) => (v ? fmtWeight(v) : "");
+  // 계산칸은 0도 '0.00'으로 표시 — 빈칸(미계산)과 '계산 결과 0'을 명확히 구분
+  const fmtCalc = (v: number | undefined) => (v == null ? "" : fmtWeight(v));
+
+  // 자동저장 실행기 — 최신 스냅샷(stateRef)으로 저장하고, 비행 중 새 입력이 있었으면 이어서 재저장.
+  //  · stateRef: 값과 날짜를 '같은 시점' 쌍으로 읽음 → 작업일 전환 직후 옛 날짜에 새 데이터가 저장되는 교차 오염 방지.
+  //  · savingRef: 동시 저장 1건 제한 → 늦게 도착한 옛 요청이 새 값을 덮어쓰는 역전 방지.
+  const stateRef = useRef({ numMap, workDate });
+  useEffect(() => { stateRef.current = { numMap, workDate }; });
+  const savingRef = useRef(false);
+  const runSave = () => {
+    if (savingRef.current) return; // 비행 중이면 스킵 — 응답 시 세대 검사로 이어서 저장됨
+    const { numMap: payload, workDate: date } = stateRef.current;
+    const gen = editGen.current;
+    savingRef.current = true;
+    setAutosaving(true);
+    saveSettlement(date, payload).then((r) => {
+      savingRef.current = false;
+      setAutosaving(false);
+      if (r?.error) return; // 실패 → dirty 유지(다음 입력·수동 저장에서 재시도)
+      if (editGen.current === gen) { clearDirty(); stampNow(); }
+      else if (dirtyRef.current) runSave(); // 비행 중 새 입력 → 최신 스냅샷으로 즉시 재저장
+    });
+  };
 
   // 자동저장(debounce 1.5초) — 입력이 이어지면 타이머가 갱신돼, 멈춘 뒤 1회만 저장.
   useEffect(() => {
     if (!dirtyRef.current) return;
     const t = setTimeout(() => {
-      if (!dirtyRef.current) return; // 그새 수동저장/리셋되면 스킵(중복 저장 방지)
-      setAutosaving(true);
-      saveSettlement(workDate, numMap).then((r) => {
-        setAutosaving(false);
-        if (!r?.error) { clearDirty(); stampNow(); }
-      });
+      if (dirtyRef.current) runSave(); // 그새 수동저장/리셋되면 스킵(중복 저장 방지)
     }, 1500);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numMap, workDate]);
 
   // 나가기 경고(보조) — 저장 안 된 변경이 있는 채로 새로고침·창닫기 시 브라우저 확인창.
@@ -243,14 +266,15 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     titleRow("K14 재 고 결 산"),
     [{ k: "rh", t: "전일재고" }, { k: "in", a: "B42" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량", span: 2, cls: "border-0 text-right text-slate-500" }, { k: "in", a: "hbjr14" }],
     [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "e", span: 1, b: true }],
-    [{ k: "h", t: "K18" }, ...["분석업체", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "실재고", "장부재고", "차중량"].map((t) => ({ k: "h", t } as C))],
+    [{ k: "h", t: "K14" }, ...["분석업체", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "실재고", "장부재고", "차중량"].map((t) => ({ k: "h", t } as C))],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B45" }, ...range("C", 8).map((c) => ({ k: "in", a: `${c}45` } as C)), { k: "calc", a: "K45" }, { k: "calc", a: "L45" }, { k: "calc", a: "M45" }],
   ];
 
   // ───────── 저장 / 이월 / 날짜변경 ─────────
   const doSave = () => start(async () => {
+    const gen = editGen.current; // 저장 비행 중 새 입력이 있으면 dirty 유지(자동저장이 마저 저장)
     const r = await saveSettlement(workDate, numMap);
-    if (!r.error) { clearDirty(); stampNow(); }
+    if (!r.error && editGen.current === gen) { clearDirty(); stampNow(); }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(workDate)} 결산서 저장됨`);
   });
   const doPush = () => start(async () => {

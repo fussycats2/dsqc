@@ -57,8 +57,8 @@ export interface ColDef {
 }
 
 // ───────── 계보 추적 (lot_links 그래프) ─────────
-// 일련번호 클릭 → 한 행이 거쳐온/거쳐갈 전 공정 경로(이동·집계·분할)
-export type LotRelation = "move" | "merge" | "split";
+// 일련번호 클릭 → 한 행이 거쳐온/거쳐갈 전 공정 경로(이동·집계·분할·이월)
+export type LotRelation = "move" | "merge" | "split" | "carry";
 export interface TraceNode {
   id: string;
   serial: string | null;
@@ -84,7 +84,7 @@ export function stageLabel(schemaType: SchemaType, side: "in" | "out"): string {
   return side === "in" ? "입고" : "출고";
 }
 export const RELATION_LABEL: Record<LotRelation, string> = {
-  move: "이동", merge: "집계", split: "분할",
+  move: "이동", merge: "집계", split: "분할", carry: "이월",
 };
 
 // ───────── io 계열 (일반공정 + 검수) ─────────

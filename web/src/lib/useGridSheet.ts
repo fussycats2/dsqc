@@ -104,7 +104,9 @@ export function useGridSheet<T extends HTMLElement>(
       const tsv = trs.map((tr) =>
         rows.get(tr)!
           .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
-          .map((el) => el.value.replace(/,/g, ""))
+          // 콤마 제거는 숫자 칸만(천단위 표시 제거) — 내역·비고 등 텍스트의 콤마는 보존
+          .map((el) => (el.inputMode === "decimal" || el.inputMode === "numeric"
+            ? el.value.replace(/,/g, "") : el.value))
           .join("\t"),
       ).join("\n");
       const fallback = () => {

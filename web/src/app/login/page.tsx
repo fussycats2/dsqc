@@ -51,6 +51,12 @@ export default function LoginPage() {
       setBusy(false);
       return;
     }
+    // 유휴 판정 기준(last_seen)을 로그인 시각으로 초기화.
+    //  컴퓨터를 오래 꺼뒀다 켜면 인증 쿠키는 사라져도 last_seen(30일)은 옛 값으로 남는데,
+    //  그 상태로 로그인하면 직후 첫 요청에서 proxy가 '5시간 무활동'으로 오인해 방금 만든
+    //  세션을 지워버려 두 번 로그인해야 했다 — 로그인 성공 = 활동 시작으로 기록.
+    const secure = location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `last_seen=${Date.now()}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax${secure}`;
     // 접속 시 작업일을 항상 오늘로 — 이전 세션에서 바꿔둔 작업일 쿠키 제거(없으면 서버가 오늘로 시작)
     document.cookie = "dsqc.workDate=; path=/; max-age=0";
     // 서버 컴포넌트가 새 세션 쿠키로 다시 렌더되도록 전체 새로고침

@@ -52,14 +52,14 @@ export function EntryGrid({
 
   // 엑셀식 격자 조작(화살표 이동·드래그 선택·복사·붙여넣기) — input[data-cell] 대상
   const gridRef = useRef<HTMLTableElement>(null);
-  const inputColKeys = useMemo(
-    () => cols.filter((c) => FIELDS.includes(c.key as keyof EntryRow)).map((c) => c.key as keyof EntryRow),
+  const inputCols = useMemo(
+    () => cols.filter((c) => FIELDS.includes(c.key as keyof EntryRow)),
     [cols],
   );
   // 붙여넣기: 기준칸 "행|키"에서 시작해 행렬을 채움(모자라면 행 자동 추가)
   const onPaste = (anchorCell: string, matrix: string[][]) => {
     const [iStr, key] = anchorCell.split("|");
-    const r0 = Number(iStr), c0 = inputColKeys.indexOf(key as keyof EntryRow);
+    const r0 = Number(iStr), c0 = inputCols.findIndex((c) => c.key === key);
     if (c0 < 0 || Number.isNaN(r0)) return;
     setRows((prev) => {
       const next = prev.map((row) => ({ ...row }));
@@ -68,8 +68,13 @@ export function EntryGrid({
         while (next.length <= ri) next.push(blank());
         for (let dc = 0; dc < matrix[dr].length; dc++) {
           const ci = c0 + dc;
-          if (ci >= inputColKeys.length) break;
-          next[ri][inputColKeys[ci]] = matrix[dr][dc];
+          if (ci >= inputCols.length) break;
+          const col = inputCols[ci];
+          const v = matrix[dr][dc];
+          // 숫자 칸은 콤마 제거 — 천단위 콤마("1,234.50")가 그대로 들어오면 전송 시 NaN→null로
+          //  조용히 비어 저장되는 것을 방지(붙여넣기는 NumberInput 패턴 검증을 우회함)
+          next[ri][col.key as keyof EntryRow] =
+            col.kind === "int" || col.kind === "weight" ? v.replace(/,/g, "") : v;
         }
       }
       return next;

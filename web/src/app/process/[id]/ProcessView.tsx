@@ -636,13 +636,14 @@ function TagAdjustModal({
 
 // ───────── 계보 추적 모달 (일련번호 클릭) — 거쳐온/거쳐갈 공정 흐름 ─────────
 //  lot_links 그래프를 시간순 세로 타임라인으로 표시. 클릭한 행은 강조.
+// 노드 시각은 KST 고정(+9h) — 기기 시간대 설정과 무관하게 표의 '일 HH:MM'(KST)과 일치.
 function fmtStamp(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const mm = d.getMonth() + 1, dd = d.getDate();
-  const hh = String(d.getHours()).padStart(2, "0"), mi = String(d.getMinutes()).padStart(2, "0");
-  return `${mm}/${dd} ${hh}:${mi}`;
+  const k = new Date(d.getTime() + 9 * 3600 * 1000); // UTC → KST
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`;
 }
 function GenealogyModal({
   trace, loading, onClose,
@@ -1023,7 +1024,7 @@ export function ProcessView({
                 altLabel: "잠금 해제",
                 onAlt: () => run(() => unlockLots(process.id, selectedLocked), (r) => `${r.unlocked}건 잠금 해제`),
                 yesLabel: "삭제",
-                onYes: () => run(() => deleteLots(process.id, selectedLocked), (r) => `잠금행 ${r.deleted}건 삭제`),
+                onYes: () => run(() => deleteLots(process.id, selectedLocked, true), (r) => `잠금행 ${r.deleted}건 삭제`),
               })}>
               🔓 잠금 해제·삭제
             </ActionBtn>

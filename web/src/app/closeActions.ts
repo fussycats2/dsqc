@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { round2 } from "@/lib/types";
@@ -89,9 +90,9 @@ export async function closeDay(sourceDate: string, carryDate: string) {
     return { blocked: true, existing: existing.length, carryDate };
   }
 
-  // 복사 이월(원래 날짜엔 그대로 남음)
+  // 복사 이월(원래 날짜엔 그대로 남음) — id를 직접 부여해 원본→복사본 'carry' 계보를 잇는다
   const rows = carryLots.map((l) => {
-    const o: Record<string, unknown> = {};
+    const o: Record<string, unknown> = { id: randomUUID() };
     for (const f of COPY_FIELDS) o[f] = l[f];
     o.locked = false;
     o.work_date = carryDate;
@@ -100,6 +101,15 @@ export async function closeDay(sourceDate: string, carryDate: string) {
   });
   const { error: insErr } = await supabase.from("lots").insert(rows);
   if (insErr) return { error: "이월 복사 실패: " + insErr.message };
+
+  // 계보: 마감일 원본 → 이월일 복사본 ('carry') — 날짜 경계에서 계보 추적이 끊기지 않게 (migration 0014)
+  const lk = await supabase.from("lot_links").insert(
+    carryLots.map((l, i) => ({ from_lot: l.id, to_lot: rows[i].id as string, relation: "carry" })),
+  );
+  if (lk.error) {
+    await supabase.from("lots").delete().in("id", rows.map((r) => r.id as string)); // 복사본 회수
+    return { error: "이월 계보 기록 실패(이월 취소됨): " + lk.error.message };
+  }
 
   await saveSnapshot(supabase, sourceDate, snapshot);
   revalidatePath("/", "layout");

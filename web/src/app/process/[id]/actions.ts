@@ -210,7 +210,12 @@ export async function completeLots(
 
   const lk = await supabase.from("lot_links")
     .insert(lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" })));
-  if (lk.error) return { error: lk.error.message };
+  if (lk.error) {
+    // 계보 기록 실패 → 출력행 회수 + 점유 원복(고아 완료행·잠긴 원본이 남지 않게)
+    await supabase.from("lots").delete().eq("id", outId);
+    await releaseClaim(supabase, lots, COMPLETE_UNDO);
+    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+  }
   revalidatePath(`/process/${processId}`);
   return { ok: true, merged: lots.length, serial };
 }
@@ -264,7 +269,12 @@ async function moveLots(
   const lk = await supabase.from("lot_links").insert(
     lots.map((l, i) => ({ from_lot: l.id, to_lot: newLots[i].id, relation: "move" })),
   );
-  if (lk.error) return { error: lk.error.message };
+  if (lk.error) {
+    // 계보 기록 실패 → 대상행 회수 + 점유 원복(고아 행·잠긴 원본이 남지 않게)
+    await supabase.from("lots").delete().in("id", newLots.map((l) => l.id));
+    await releaseClaim(supabase, lots, MOVE_UNDO);
+    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+  }
   revalidatePath(`/process/${sourceProcessId}`);
   revalidatePath(`/process/${targetProcessId}`);
   return { ok: true, moved: lots.length };
@@ -412,7 +422,12 @@ export async function splitLotCustom(
     const links = parents.flatMap((pid) =>
       childIds.map((cid) => ({ from_lot: pid, to_lot: cid, relation: "split" as const })));
     const lk = await supabase.from("lot_links").insert(links);
-    if (lk.error) return { error: lk.error.message };
+    if (lk.error) {
+      // 계보 기록 실패 → 자식행 회수 + 원본 점유 원복(원본 미삭제 상태라 이중 집계 방지)
+      await supabase.from("lots").delete().in("id", childIds);
+      await unlockParent();
+      return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+    }
   }
   // 원본 삭제 — 원본의 기존 링크(부모→원본)는 on delete cascade로 정리(부모→자식 링크는 유지).
   await supabase.from("lots").delete().eq("id", L.id);
@@ -567,11 +582,28 @@ export async function traceLot(lotId: string): Promise<{ error?: string } & Part
 }
 
 // ───────── 삭제 ─────────
-export async function deleteLots(processId: string, lotIds: string[]) {
+//  · 일반 삭제: 선점유(조건부 잠금) 후 점유분만 삭제 — 다른 기기가 막 잠근(집계/이동) 행을
+//    오래된 화면에서 지워 정합성이 깨지는 것을 차단. 일부라도 선점 실패하면 전체 원복 후 중단.
+//  · includeLocked=true(잠금 해제·삭제 버튼 경로): 잠금행을 명시적으로 지우는 동작 — 그대로 삭제.
+export async function deleteLots(processId: string, lotIds: string[], includeLocked = false) {
   if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
+  let claimed: LotRow[] = [];
+  if (!includeLocked) {
+    const { rows, error } = await claimUnlocked(supabase, lotIds, { locked: true });
+    if (error) return { error: "DB: " + error.message };
+    if (rows.length === 0) return { error: "처리 가능한 행이 없습니다." };
+    if (rows.length !== lotIds.length) {
+      await releaseClaim(supabase, rows, { locked: false }); // 일부만 점유 → 원복 후 중단
+      return { error: STALE_MSG };
+    }
+    claimed = rows;
+  }
   const { error } = await supabase.from("lots").delete().in("id", lotIds);
-  if (error) return { error: error.message };
+  if (error) {
+    await releaseClaim(supabase, claimed, { locked: false }); // 삭제 실패 → 점유 원복(빈 배열이면 no-op)
+    return { error: error.message };
+  }
   revalidatePath(`/process/${processId}`);
   return { ok: true, deleted: lotIds.length };
 }
