@@ -5,7 +5,7 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { datesWithData } from "@/app/dateActions";
 
 // 의존성 없는 가벼운 달력 팝오버. 네이티브 <input type="date">는 날짜별 강조가 불가하므로 직접 구현.
-//  · 보고 있는 달의 'lots 데이터가 있는 날'을 서버 액션으로 받아 점·배경색으로 강조.
+//  · 보고 있는 달의 '데이터가 있는 날'(lots·결산서 어느 쪽이든)을 서버 액션으로 받아 점·배경색으로 강조.
 //  · UTC 기준 날짜 계산(프로젝트 다른 날짜 로직과 동일).
 
 const pad = (n: number) => String(n).padStart(2, "0");
