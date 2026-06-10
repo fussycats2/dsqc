@@ -1,6 +1,7 @@
 import { ClientLink } from "@/components/ClientLink";
 import { createClient } from "@/lib/supabase/server";
 import { envMissing, getProcesses } from "@/lib/getProcesses";
+import { fetchAll } from "@/lib/fetchAll";
 import { fmtWeight, round2, type Process } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 import { DayClose } from "./DayClose";
@@ -307,10 +308,14 @@ export default async function Home() {
   const workDate = await getWorkDate();
   // processes는 getProcesses()(레이아웃과 React cache로 dedupe + 모듈 캐시)로 — 자체 중복 쿼리 제거
   const [{ data: lotData }, procAll] = await Promise.all([
-    supabase
-      .from("lots")
-      .select("process_id, side, weight, weight_before, locked")
-      .eq("work_date", workDate),
+    fetchAll((from, to) =>
+      supabase
+        .from("lots")
+        .select("process_id, side, weight, weight_before, locked")
+        .eq("work_date", workDate)
+        .order("id")
+        .range(from, to),
+    ),
     getProcesses(),
   ]);
 

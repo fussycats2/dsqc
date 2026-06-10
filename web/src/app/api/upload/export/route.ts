@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 import { fillUploadXlsm } from "@/lib/uploadXlsx";
 import type { Lot, SchemaType } from "@/lib/types";
 
@@ -25,10 +26,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "날짜(date)가 필요합니다." }, { status: 400 });
   }
   const supabase = await createClient();
-  const [{ data: procs }, { data: lots }] = await Promise.all([
+  const [{ data: procs }, { data: lots, error: lotErr }] = await Promise.all([
     supabase.from("processes").select("id,name,schema_type"),
-    supabase.from("lots").select("*").eq("work_date", date),
+    fetchAll<Lot>((from, to) =>
+      supabase
+        .from("lots").select("*").eq("work_date", date)
+        .order("created_at").order("id")
+        .range(from, to),
+    ),
   ]);
+  // 백업은 전량이 생명 — 일부만 담긴 파일이 만들어지느니 실패가 낫다
+  if (lotErr) {
+    return NextResponse.json({ error: "백업 조회 실패: " + lotErr.message }, { status: 500 });
+  }
   const tpl = await readFile(await templatePath());
   const buf = await fillUploadXlsm(
     tpl,

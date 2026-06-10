@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 import { getWorkDate } from "@/lib/workDate";
 import {
   COLUMNS, fmtWeight, fmtInt, fmtKstDayTime, shipWeight, lossOf, lossRateOf,
@@ -129,8 +130,12 @@ export default async function PrintKindPage({
   const idByName = new Map((procData ?? []).map((p) => [p.name as string, p.id as string]));
   const ids = allNames.map((n) => idByName.get(n)).filter(Boolean) as string[];
 
-  const { data: lotData } = await supabase
-    .from("lots").select("*").in("process_id", ids).eq("work_date", workDate).eq("side", side).order("created_at");
+  const { data: lotData } = await fetchAll<Lot>((from, to) =>
+    supabase
+      .from("lots").select("*").in("process_id", ids).eq("work_date", workDate).eq("side", side)
+      .order("created_at").order("serial").order("id")
+      .range(from, to),
+  );
   let lots = (lotData ?? []) as Lot[];
   if (onlyUnlocked) lots = lots.filter((l) => !l.locked);
   const rowsOf = (procId?: string) => (procId ? lots.filter((l) => l.process_id === procId) : []);

@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 import { round2 } from "@/lib/types";
 
 // ────────────────────────────────────────────────────────────────────────
@@ -68,14 +69,24 @@ export async function closeDay(sourceDate: string, carryDate: string) {
   const workIds = procs.filter((p) => p.schema_type === "work").map((p) => p.id);
 
   // 마감일 전체 → 스냅샷
-  const { data: srcAll } = await supabase
-    .from("lots").select("id, process_id, side, weight, weight_before, locked").eq("work_date", sourceDate);
-  const snapshot = buildSnapshot((srcAll ?? []) as LotRow[], procs, sourceDate);
+  const { data: srcAll, error: srcErr } = await fetchAll<LotRow>((from, to) =>
+    supabase
+      .from("lots").select("id, process_id, side, weight, weight_before, locked")
+      .eq("work_date", sourceDate).order("id").range(from, to),
+  );
+  if (srcErr) return { error: "마감 조회 실패: " + srcErr.message };
+  const snapshot = buildSnapshot(srcAll as LotRow[], procs, sourceDate);
 
-  // 마감일 공정 미작업(복사 대상)
-  const { data: carryData } = await supabase
-    .from("lots").select("*").eq("work_date", sourceDate).eq("side", "in").eq("locked", false).in("process_id", workIds);
-  const carryLots = (carryData ?? []) as LotRow[];
+  // 마감일 공정 미작업(복사 대상) — 일부만 받은 채 이월하면 재고가 소실되므로 에러 시 중단
+  const { data: carryData, error: carryErr } = await fetchAll<LotRow>((from, to) =>
+    supabase
+      .from("lots").select("*")
+      .eq("work_date", sourceDate).eq("side", "in").eq("locked", false).in("process_id", workIds)
+      .order("created_at").order("serial").order("id")
+      .range(from, to),
+  );
+  if (carryErr) return { error: "이월 대상 조회 실패: " + carryErr.message };
+  const carryLots = carryData as LotRow[];
 
   if (carryLots.length === 0) {
     await saveSnapshot(supabase, sourceDate, snapshot);
@@ -84,10 +95,11 @@ export async function closeDay(sourceDate: string, carryDate: string) {
   }
 
   // 이월날짜에 이미 공정 미작업이 있으면 덮어쓰지 않고 취소(데이터 이동·삭제 후 재시도 안내)
-  const { data: existing } = await supabase
-    .from("lots").select("id").eq("work_date", carryDate).eq("side", "in").eq("locked", false).in("process_id", workIds);
-  if (existing && existing.length > 0) {
-    return { blocked: true, existing: existing.length, carryDate };
+  const { count: existing } = await supabase
+    .from("lots").select("id", { count: "exact", head: true })
+    .eq("work_date", carryDate).eq("side", "in").eq("locked", false).in("process_id", workIds);
+  if (existing && existing > 0) {
+    return { blocked: true, existing, carryDate };
   }
 
   // 복사 이월(원래 날짜엔 그대로 남음) — id를 직접 부여해 원본→복사본 'carry' 계보를 잇는다
@@ -125,12 +137,12 @@ export async function moveDate(fromDate: string, toDate: string) {
   const supabase = await createClient();
 
   // 옮길 날짜에 기존 데이터(또는 스냅샷)가 있으면 덮어쓰지 않고 취소
-  const { data: exLots } = await supabase
-    .from("lots").select("id").eq("work_date", toDate);
+  const { count: exLots } = await supabase
+    .from("lots").select("id", { count: "exact", head: true }).eq("work_date", toDate);
   const { data: exPer } = await supabase
     .from("periods").select("id").eq("kind", "day").eq("label", toDate).maybeSingle();
-  if ((exLots && exLots.length > 0) || exPer) {
-    return { blocked: true, existing: exLots?.length ?? 0, toDate };
+  if ((exLots && exLots > 0) || exPer) {
+    return { blocked: true, existing: exLots ?? 0, toDate };
   }
 
   const { error, count } = await supabase

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 import { carryData, type CellMap } from "@/lib/settlement";
 import { round2, shipWeight, type Lot } from "@/lib/types";
 
@@ -84,10 +85,13 @@ type Ag = { inW: number; ship: number; tagLoss: number; loss: number; stock: num
 
 export async function pushFromLots(workDate: string, current: CellMap) {
   const supabase = await createClient();
-  const [{ data: procData }, { data: lotData }] = await Promise.all([
+  const [{ data: procData }, { data: lotData, error: lotErr }] = await Promise.all([
     supabase.from("processes").select("id, name, schema_type"),
-    supabase.from("lots").select("*").eq("work_date", workDate),
+    fetchAll<Lot>((from, to) =>
+      supabase.from("lots").select("*").eq("work_date", workDate).order("id").range(from, to),
+    ),
   ]);
+  if (lotErr) return { error: "결산전송 실패(조회): " + lotErr.message };
   const nameOf = new Map((procData ?? []).map((p) => [p.id as string, p.name as string]));
   const schemaOf = new Map((procData ?? []).map((p) => [p.id as string, p.schema_type as string]));
 

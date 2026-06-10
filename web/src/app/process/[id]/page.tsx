@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetchAll";
 import { COLUMNS, type Lot } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
 import { getProcesses } from "@/lib/getProcesses";
@@ -29,9 +30,14 @@ export default async function ProcessPage({
   }
 
   // 선택한 작업일(쿠키)의 데이터만 표시 — 날짜별 조회·수정 (페이지 고유 조회는 lots 1건뿐)
+  //  · 동시 일괄전송 행들은 created_at이 같아 serial(발번순)→id로 순서를 고정(페이지 경계 안정화 겸)
   const supabase = await createClient();
-  const { data: lotData } = await supabase
-    .from("lots").select("*").eq("process_id", id).eq("work_date", workDate).order("created_at");
+  const { data: lotData } = await fetchAll<Lot>((from, to) =>
+    supabase
+      .from("lots").select("*").eq("process_id", id).eq("work_date", workDate)
+      .order("created_at").order("serial").order("id")
+      .range(from, to),
+  );
   const lots = (lotData ?? []) as Lot[];
   const inRows = lots.filter((l) => l.side === "in");
   const outRows = lots.filter((l) => l.side === "out");
