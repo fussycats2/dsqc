@@ -86,9 +86,18 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
 
   const groupSub = (g: MenuGroup) => {
     const procs = processes.filter((p) => p.karat === karat && g.match(p));
+    // 서브메뉴가 열리는 순간 그룹 공정 전체를 prefetch — 항목을 고르는 사이에 서버 렌더를
+    //  미리 끝내 클릭 시 대기 없이 전환(하단탭 warmGroup과 동일 패턴, 라우터가 dedupe).
+    const warmGroup = () => procs.forEach((p) => warm(`/process/${p.id}`));
     return (
       <ContextMenuSub key={g.key}>
-        <ContextMenuSubTrigger disabled={procs.length === 0}>{g.label}</ContextMenuSubTrigger>
+        <ContextMenuSubTrigger
+          disabled={procs.length === 0}
+          onPointerEnter={warmGroup}
+          onFocus={warmGroup}
+        >
+          {g.label}
+        </ContextMenuSubTrigger>
         <ContextMenuSubContent
           className="max-h-[60vh] overflow-y-auto"
           onPointerEnter={cancelClose}

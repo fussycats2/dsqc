@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildGroupedSerial } from "@/lib/serial";
 import { round2, type TraceNode, type TraceEdge, type TraceResult, type LotRelation } from "@/lib/types";
 import { getWorkDate } from "@/lib/workDate";
+import { getProcesses } from "@/lib/getProcesses";
 
 // ────────────────────────────────────────────────────────────────────────
 //  공정 흐름 액션 — docs/05_정밀스펙.md §2 매핑 그대로 (엑셀 VBA 1:1)
@@ -44,9 +45,10 @@ const sumOf = (rows: LotRow[], k: string) =>
 const joinText = (rows: LotRow[], k: string) =>
   [...new Set(rows.map((l) => l[k]).filter(Boolean).map(String))].join(",") || null;
 
-async function nameOf(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
-  const { data } = await supabase.from("processes").select("name").eq("id", id).single();
-  return (data?.name as string | undefined) ?? null;
+// 공정 이름/타입은 런타임에 사실상 불변 → 매번 DB 조회 대신 getProcesses 캐시(요청 내 dedupe
+//  + 모듈 TTL 5분)에서 찾기 — 이동류·집계마다 선행 왕복 1회 제거. 미존재 id는 종전처럼 null.
+async function nameOf(id: string) {
+  return (await getProcesses()).find((p) => p.id === id)?.name ?? null;
 }
 // 이전파트 표시(엑셀 Module4/9): "시트명 일 HH:MM" 예) "양장 21 11:56"
 //  서버는 UTC라 KST(+9h)로 환산해서 문자열 생성(이 값은 텍스트로 저장·표시되므로 생성 시점에 KST여야 함).
@@ -57,9 +59,8 @@ function partStamp(name: string | null) {
   const mm = String(d.getUTCMinutes()).padStart(2, "0");
   return `${name} ${d.getUTCDate()} ${hh}:${mm}`;
 }
-async function schemaOf(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
-  const { data } = await supabase.from("processes").select("schema_type").eq("id", id).single();
-  return (data?.schema_type as string | undefined) ?? null;
+async function schemaOf(id: string) {
+  return (await getProcesses()).find((p) => p.id === id)?.schema_type ?? null;
 }
 // 동시작업 안전장치: 선택 행을 '먼저 조건부 잠금(locked=false인 것만)'으로 점유하고, 실제 점유한 행만 반환.
 //  · 두 기기가 같은 행을 동시에 처리해도 한쪽만 점유 → 이중 집계/이중 이관 차단.
@@ -85,6 +86,28 @@ async function releaseClaim(
 }
 
 const STALE_MSG = "선택한 행 중 일부가 다른 기기에서 먼저 처리되었습니다. 새로고침 후 다시 시도하세요.";
+
+// 새 lots + 계보(lot_links)를 한 번에 기록 — 실패 시 아무것도 남지 않음을 보장.
+//  · 빠른 경로: insert_lots_linked RPC(migration 0016, 단일 트랜잭션) 1콜 — 부분 실패 자체가 없음.
+//  · 폴백: RPC 미적용(PGRST202)이면 기존 2콜 방식 그대로(links 실패 시 새 행 회수) — 동작 동일.
+//  성공 시 null, 실패 시 에러 메시지 반환. 선점유 해제(releaseClaim 등)는 호출부 책임.
+async function insertLotsLinked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lots: Record<string, unknown>[],
+  links: { from_lot: string; to_lot: string; relation: string }[],
+): Promise<string | null> {
+  const { error } = await supabase.rpc("insert_lots_linked", { p_lots: lots, p_links: links });
+  if (!error) return null;
+  if (error.code !== "PGRST202") return error.message; // RPC 존재 + 실패 = 트랜잭션 전체 롤백됨
+  const ins = await supabase.from("lots").insert(lots);
+  if (ins.error) return ins.error.message;
+  const lk = await supabase.from("lot_links").insert(links);
+  if (lk.error) {
+    await supabase.from("lots").delete().in("id", lots.map((l) => l.id as string));
+    return "계보 기록 실패(원복됨): " + lk.error.message;
+  }
+  return null;
+}
 
 // ───────── 보내기 (작성 → io 입고/출고): Module2 AskInboundMode ─────────
 //  · 입고(side=in, A:I): 일련번호 최초 생성(약자_YYMMDD_001)
@@ -166,7 +189,7 @@ export async function completeLots(
 ) {
   if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const supabase = await createClient();
-  if ((await schemaOf(supabase, processId)) !== "work")
+  if ((await schemaOf(processId)) !== "work")
     return { error: "집계(작업완료)는 공정(연마/뻥/빠우)에서만 가능합니다." };
 
   // 1) 먼저 점유(완료+잠금) — 동시/중복 작업완료 차단. 실제로 내가 잠근 행만 반환.
@@ -181,12 +204,12 @@ export async function completeLots(
     return { error: STALE_MSG };
   }
 
-  // 2) 점유분으로 집계 출력행 생성
+  // 2) 점유분으로 집계 출력행 생성 — 완료행+계보를 insertLotsLinked로 한 번에 기록
   const serial = buildGroupedSerial(lots.map((l) => l.serial));
   const outId = randomUUID(); // id를 직접 부여 → 읽기-후-삽입 없이 lot_links 일괄 생성
-  const { error: insErr } = await supabase
-    .from("lots")
-    .insert({
+  const insErr = await insertLotsLinked(
+    supabase,
+    [{
       id: outId,
       serial,
       process_id: processId,
@@ -202,19 +225,13 @@ export async function completeLots(
       due_date: joinText(lots, "due_date"),                 // 납기(H) 중복제거 결합
       note: joinText(lots, "note"),                         // 비고(J) 중복제거 결합
       work_date: lots[0]?.work_date, // 집계 결과는 원본 작업일 승계
-    });
+    }],
+    lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" })),
+  );
   if (insErr) {
-    await releaseClaim(supabase, lots, COMPLETE_UNDO); // 출력행 생성 실패 → 점유 원복
-    return { error: "완료행 생성 실패: " + insErr.message };
-  }
-
-  const lk = await supabase.from("lot_links")
-    .insert(lots.map((l) => ({ from_lot: l.id, to_lot: outId, relation: "merge" })));
-  if (lk.error) {
-    // 계보 기록 실패 → 출력행 회수 + 점유 원복(고아 완료행·잠긴 원본이 남지 않게)
-    await supabase.from("lots").delete().eq("id", outId);
+    // 실패 시 완료행·계보 모두 남지 않음(insertLotsLinked 보장) → 점유만 원복
     await releaseClaim(supabase, lots, COMPLETE_UNDO);
-    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+    return { error: "완료행 기록 실패: " + insErr };
   }
   revalidatePath(`/process/${processId}`);
   return { ok: true, merged: lots.length, serial };
@@ -234,8 +251,8 @@ async function moveLots(
 ) {
   if (lotIds.length === 0) return { error: "선택된 행이 없습니다." };
   const [srcName, tgtName] = await Promise.all([
-    nameOf(supabase, sourceProcessId),
-    nameOf(supabase, targetProcessId),
+    nameOf(sourceProcessId),
+    nameOf(targetProcessId),
   ]);
   const now = new Date().toISOString();
 
@@ -251,7 +268,7 @@ async function moveLots(
     return { error: STALE_MSG };
   }
 
-  // 2) 점유분으로 대상 공정 행 생성
+  // 2) 점유분으로 대상 공정 행 생성 — 대상행+계보를 insertLotsLinked로 한 번에 기록
   const newLots = lots.map((l) => ({
     id: randomUUID(),
     process_id: targetProcessId,
@@ -260,20 +277,15 @@ async function moveLots(
     work_date: l.work_date, // 이동 흐름은 원본 작업일 승계
     ...build(l, srcName),
   }));
-  const ins = await supabase.from("lots").insert(newLots);
-  if (ins.error) {
-    await releaseClaim(supabase, lots, MOVE_UNDO); // 대상행 생성 실패 → 점유 원복
-    return { error: ins.error.message };
-  }
-
-  const lk = await supabase.from("lot_links").insert(
+  const insErr = await insertLotsLinked(
+    supabase,
+    newLots,
     lots.map((l, i) => ({ from_lot: l.id, to_lot: newLots[i].id, relation: "move" })),
   );
-  if (lk.error) {
-    // 계보 기록 실패 → 대상행 회수 + 점유 원복(고아 행·잠긴 원본이 남지 않게)
-    await supabase.from("lots").delete().in("id", newLots.map((l) => l.id));
+  if (insErr) {
+    // 실패 시 대상행·계보 모두 남지 않음(insertLotsLinked 보장) → 점유만 원복
     await releaseClaim(supabase, lots, MOVE_UNDO);
-    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+    return { error: insErr };
   }
   revalidatePath(`/process/${sourceProcessId}`);
   revalidatePath(`/process/${targetProcessId}`);
@@ -412,20 +424,16 @@ export async function splitLotCustom(
     note: L.note,
     work_date: L.work_date, // 분할도 원본 작업일 승계
   }));
-  const ins = await supabase.from("lots").insert(childRows);
-  if (ins.error) {
-    await unlockParent(); // 조각행 생성 실패 → 원본 점유 원복
-    return { error: ins.error.message };
-  }
-
-  // 원본 → 각 새 조각 'split' 링크 — 계보 추적에 분할 기록이 남는 핵심.
-  const lk = await supabase.from("lot_links").insert(
-    childIds.map((cid) => ({ from_lot: L.id, to_lot: cid, relation: "split" as const })));
-  if (lk.error) {
-    // 계보 기록 실패 → 조각행 회수 + 원본 점유 원복(원본 미변경 상태라 이중 집계 방지)
-    await supabase.from("lots").delete().in("id", childIds);
+  // 조각행 + 원본→조각 'split' 링크(계보 추적에 분할 기록이 남는 핵심)를 한 번에 기록
+  const insErr = await insertLotsLinked(
+    supabase,
+    childRows,
+    childIds.map((cid) => ({ from_lot: L.id, to_lot: cid, relation: "split" })),
+  );
+  if (insErr) {
+    // 실패 시 조각행·계보 모두 남지 않음(insertLotsLinked 보장) → 원본 점유만 원복
     await unlockParent();
-    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
+    return { error: insErr };
   }
 
   // 원본을 첫 조각(-1)으로 갱신 + 점유 해제.
@@ -483,10 +491,8 @@ export async function tagConfirm() {
   const supabase = await createClient();
   const workDate = await getWorkDate();
 
-  // 검수(is_inspection) 공정 전체
-  const { data: insp } = await supabase
-    .from("processes").select("id").eq("is_inspection", true);
-  const inspIds = (insp ?? []).map((p) => p.id as string);
+  // 검수(is_inspection) 공정 전체 — 공정 마스터는 getProcesses 캐시에서(선행 왕복 1회 제거)
+  const inspIds = (await getProcesses()).filter((p) => p.is_inspection).map((p) => p.id);
   if (inspIds.length === 0) return { ok: true, filled: 0 };
 
   const { data } = await supabase

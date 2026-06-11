@@ -51,19 +51,23 @@ export function TabBar({ processes }: { processes: Process[] }) {
   // 분류 드롭다운(위로 펼침) — 현재 karat의 그 분류 공정 목록
   const groupMenu = (g: MenuGroup) => {
     const procs = processes.filter((p) => p.karat === karat && g.match(p));
+    // 메뉴가 열리는 순간 그룹 공정 전체를 prefetch — 항목을 고르는 사이(수백 ms~수 초)에 서버
+    //  렌더를 미리 끝내 클릭 시 대기 없이 전환. 항목 호버 warm은 클릭 직전이라 lead time이 짧았음.
+    //  중복 prefetch는 라우터가 dedupe, 프록시는 prefetch 인증 검사를 스킵(updateSession)해 저비용.
+    const warmGroup = () => procs.forEach((p) => warm(`/process/${p.id}`));
     const isActiveGroup = !!activeProcess && activeProcess.karat === karat && g.match(activeProcess);
     return (
       <DropdownMenu
         key={g.key}
         modal={false}
         open={openKey === g.key}
-        onOpenChange={(o) => setOpenKey(o ? g.key : null)}
+        onOpenChange={(o) => { setOpenKey(o ? g.key : null); if (o) warmGroup(); }}
       >
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             disabled={procs.length === 0}
-            onPointerEnter={(e) => { if (e.pointerType !== "touch") openGroup(g.key); }}
+            onPointerEnter={(e) => { if (e.pointerType !== "touch") { openGroup(g.key); warmGroup(); } }}
             onPointerLeave={(e) => { if (e.pointerType !== "touch") scheduleClose(); }}
             className={`flex shrink-0 items-center justify-center gap-0.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${
               g.wide ? "w-16" : "min-w-[3.25rem]"
