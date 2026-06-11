@@ -392,10 +392,13 @@ export async function splitLotCustom(
   }
 
   // 새 조각 행(-2..-n, id 직접 부여 → lot_links 일괄 생성). 내역/납기/비고/이전파트 승계.
+  //  created_at도 원본 그대로 승계 — 표 정렬(created_at→serial)에서 둘째 키 serial(X-1<X-2<…)이
+  //  조각 전체를 원본 자리에 나란히 모음(기존엔 새 조각만 맨 아래로 떨어져 위치가 갈렸음).
   const rest = parts.slice(1);
   const childIds = rest.map(() => randomUUID());
   const childRows = rest.map((p, i) => ({
     id: childIds[i],
+    created_at: L.created_at,
     serial: L.serial ? `${L.serial}-${i + 2}` : null,
     process_id: processId,
     side: L.side,

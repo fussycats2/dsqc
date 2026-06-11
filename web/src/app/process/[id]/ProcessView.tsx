@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
+import type { ColDef, Lot, Process, TraceResult, TraceNode, TraceEdge } from "@/lib/types";
 import { fmtWeight, fmtInt, fmtKstDayTime, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NumberInput } from "@/components/NumberInput";
@@ -637,8 +637,11 @@ function TagAdjustModal({
   );
 }
 
-// ───────── 계보 추적 모달 (일련번호 클릭) — 거쳐온/거쳐갈 공정 흐름 ─────────
-//  lot_links 그래프를 시간순 세로 타임라인으로 표시. 클릭한 행은 강조.
+// ───────── 계보 추적 모달 (일련번호 클릭) — 관계도(트리) 표현 ─────────
+//  기준 행을 맨 위에 두고 '어디서 왔나(이전)' / '어디로 갔나(이후)'를 들여쓰기 가지로 표시.
+//  · 집계는 출처 여러 개가 같은 깊이의 가지로 나란히 → 따로 오다 합쳐지는 모양이 드러남.
+//  · 함께 나눠진 형제 조각은 기준 경로에 직접 나오지 않음 — '나누기 전 원본' 카드를 클릭해
+//    그 행 기준으로 갈아타면(타고 들어가면) 이후 경로에서 조각 전체가 보임.
 // 노드 시각은 KST 고정(+9h) — 기기 시간대 설정과 무관하게 표의 '일 HH:MM'(KST)과 일치.
 function fmtStamp(iso: string | null): string {
   if (!iso) return "";
@@ -648,31 +651,176 @@ function fmtStamp(iso: string | null): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`;
 }
+
+// 분할 가상원본 합성 — 나누기는 원본 행이 첫 조각(-1)으로 갱신되므로 그래프에 '나누기 전' 행이 없음.
+//  표시용으로 '나누기 전 원본'(예: 001) 가상 노드를 만들어 원본→모든 조각(-1 포함)을 'split'로 연결.
+//  수량/중량은 조각 합(재분할이면 재귀 합산) = 나누기 전 값. -1 일련번호 패턴이 안 맞는
+//  데이터(옛 방식·번호 없는 행)는 변형하지 않고 그대로 둠.
+const isVirtualId = (id: string) => id.startsWith("virtual-");
+function synthesizeSplitOriginals(g: TraceResult): { nodes: TraceNode[]; edges: TraceEdge[] } {
+  const byId = new Map(g.nodes.map((n) => [n.id, n] as const));
+  const outSplit = new Map<string, TraceEdge[]>();
+  for (const e of g.edges) {
+    if (e.relation !== "split") continue;
+    const a = outSplit.get(e.from) ?? []; a.push(e); outSplit.set(e.from, a);
+  }
+  const nodes = [...g.nodes];
+  let edges = [...g.edges];
+  for (const v of g.nodes) {
+    const splits = outSplit.get(v.id) ?? [];
+    if (splits.length === 0 || !v.serial || !v.serial.endsWith("-1")) continue;
+    const prefix = v.serial.replace(/-1$/, "");
+    const kids = splits.map((e) => byId.get(e.to));
+    if (!kids.every((k) => k?.serial?.startsWith(prefix + "-"))) continue;
+    const vid = `virtual-${v.id}`;
+    nodes.push({ ...v, id: vid, serial: prefix, locked: false });
+    // 원본으로 들어오던 상류 → 가상 원본으로, 조각으로 나가던 split → 가상 원본에서 출발로 재배선
+    edges = edges.map((e) =>
+      e.to === v.id ? { ...e, to: vid }
+        : e.from === v.id && e.relation === "split" ? { ...e, from: vid }
+          : e);
+    edges.push({ from: vid, to: v.id, relation: "split" }); // 가상 원본 → 첫 조각(-1)
+  }
+  // 가상 원본의 수량/중량 = 조각 합(조각이 또 가상 원본이면 재귀) — 나누기 전 값 복원
+  const kidsOf = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.relation !== "split" || !isVirtualId(e.from)) continue;
+    const a = kidsOf.get(e.from) ?? []; a.push(e.to); kidsOf.set(e.from, a);
+  }
+  const all = new Map(nodes.map((n) => [n.id, n] as const));
+  const sumOf = (id: string, key: "qty" | "weight"): number | null => {
+    const n = all.get(id);
+    if (!n) return null;
+    if (!isVirtualId(id)) return n[key];
+    const vals = (kidsOf.get(id) ?? []).map((k) => sumOf(k, key)).filter((x): x is number => x != null);
+    return vals.length ? round2(vals.reduce((a, b) => a + b, 0)) : null;
+  };
+  for (const n of nodes) {
+    if (!isVirtualId(n.id)) continue;
+    n.qty = sumOf(n.id, "qty");
+    n.weight = sumOf(n.id, "weight");
+  }
+  return { nodes, edges };
+}
+
+function TraceNodeCard({ n, isRoot, onClick }: { n: TraceNode; isRoot?: boolean; onClick?: () => void }) {
+  const is14 = n.karat === "14K";
+  return (
+    <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      title={onClick ? "클릭하면 이 행을 기준으로 다시 추적합니다" : undefined}
+      className={`rounded-xl border p-2.5 ${
+        isRoot
+          ? "border-blue-400 bg-blue-50/70 ring-1 ring-blue-300 dark:border-blue-700 dark:bg-blue-950/40"
+          : "border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+      } ${onClick ? "cursor-pointer transition-colors hover:border-blue-400 hover:bg-blue-50/50 dark:hover:border-blue-600 dark:hover:bg-blue-950/30" : ""}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className={`text-sm font-semibold ${is14 ? "text-blue-600 dark:text-blue-400" : ""}`}>
+          {n.process_name}
+        </span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+          {stageLabel(n.schema_type, n.side)}
+        </span>
+        {n.locked && <span className="text-[10px]">🔒</span>}
+        {isVirtualId(n.id) && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">나누기 전 원본</span>
+        )}
+        {isRoot && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white">기준 행</span>}
+        <span className="ml-auto text-[10px] tabular-nums text-slate-400">{fmtStamp(n.moved_at ?? n.created_at)}</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        <span className="font-medium tabular-nums">{n.serial ?? "(번호없음)"}</span>
+        {n.description && <span className="text-slate-500 dark:text-neutral-400">{n.description}</span>}
+        <span className="text-slate-400">수량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtInt(n.qty) || "-"}</b></span>
+        <span className="text-slate-400">중량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtWeight(n.weight) || "-"}</b></span>
+      </div>
+    </div>
+  );
+}
+
+// 한 방향(up=이전/down=이후)의 인접 행들을 재귀로 그리는 가지 — 들여쓰기+세로선이 관계도 역할.
+//  같은 깊이의 형제 가지 = 집계의 출처들/분할의 조각들이 나란히 보이는 부분.
+function TraceTree({ id, dir, byId, edgesOf, onGoto, seen }: {
+  id: string;
+  dir: "up" | "down";
+  byId: Map<string, TraceNode>;
+  edgesOf: Map<string, TraceEdge[]>; // up=들어오는(부모) / down=나가는(자식) edge 맵
+  onGoto: (id: string) => void;
+  seen: Set<string>; // 현재 경로의 방문 노드 — 순환 방어
+}) {
+  const items = (edgesOf.get(id) ?? [])
+    .map((e) => ({ e, n: byId.get(dir === "up" ? e.from : e.to) }))
+    .filter((x): x is { e: TraceEdge; n: TraceNode } => !!x.n && !seen.has(x.n.id))
+    // 분할 조각들은 created_at이 같아(원본 승계) 일련번호로 2차 정렬 — X-1, X-2, … 순
+    .sort((a, b) => a.n.created_at.localeCompare(b.n.created_at)
+      || (a.n.serial ?? "").localeCompare(b.n.serial ?? ""));
+  if (items.length === 0) return null;
+  return (
+    <ul className="ml-3 space-y-1.5 border-l-2 border-slate-200 pl-2.5 pt-1.5 dark:border-neutral-700">
+      {items.map(({ e, n }) => (
+        <li key={n.id} className="space-y-1">
+          <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+            {dir === "up" ? "↑" : "↓"} {RELATION_LABEL[e.relation]}
+          </span>
+          <TraceNodeCard n={n} onClick={() => onGoto(n.id)} />
+          <TraceTree id={n.id} dir={dir} byId={byId} edgesOf={edgesOf} onGoto={onGoto} seen={new Set(seen).add(n.id)} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function GenealogyModal({
   trace, loading, onClose,
 }: {
   trace: TraceResult | null; loading: boolean; onClose: () => void;
 }) {
-  // 시간순 정렬 → 흐름이 위→아래로 진행
-  const nodes = useMemo(
-    () => (trace ? [...trace.nodes].sort((a, b) => a.created_at.localeCompare(b.created_at)) : []),
+  // 기준 행(루트) — 카드 클릭으로 갈아타고(타고 들어가기), 스택으로 '뒤로' 지원.
+  //  같은 연결망 안에서는 그래프가 동일하므로 서버 재조회 없이 루트만 바꿈.
+  //  초기값은 마운트 시 1회 — 호출부에서 key={trace.rootId}로 결과 도착 시 리마운트됨.
+  const [rootId, setRootId] = useState<string | null>(trace?.rootId ?? null);
+  const [stack, setStack] = useState<string[]>([]);
+
+  // 가상 '나누기 전 원본' 노드 합성 — 001 → (분할) → 001-1..-n 형태로 표시되게
+  const graph = useMemo(
+    () => (trace ? synthesizeSplitOriginals(trace) : { nodes: [] as TraceNode[], edges: [] as TraceEdge[] }),
     [trace]);
-  // 노드별 들어오는 관계(부모) — 연결선 라벨용
-  const incoming = useMemo(() => {
+  const byId = useMemo(
+    () => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph]);
+  const parentsOf = useMemo(() => {
     const m = new Map<string, TraceEdge[]>();
-    for (const e of trace?.edges ?? []) {
-      const arr = m.get(e.to) ?? []; arr.push(e); m.set(e.to, arr);
-    }
+    for (const e of graph.edges) { const a = m.get(e.to) ?? []; a.push(e); m.set(e.to, a); }
     return m;
-  }, [trace]);
-  const rootSerial = trace ? nodes.find((n) => n.id === trace.rootId)?.serial : null;
+  }, [graph]);
+  const childrenOf = useMemo(() => {
+    const m = new Map<string, TraceEdge[]>();
+    for (const e of graph.edges) { const a = m.get(e.from) ?? []; a.push(e); m.set(e.from, a); }
+    return m;
+  }, [graph]);
+
+  const root = rootId ? byId.get(rootId) : undefined;
+  const goto = (id: string) => {
+    if (!rootId || id === rootId) return;
+    setStack((s) => [...s, rootId]);
+    setRootId(id);
+  };
+  const back = () => {
+    const prev = stack[stack.length - 1];
+    if (!prev) return;
+    setStack(stack.slice(0, -1));
+    setRootId(prev);
+  };
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>🧬 계보 추적
-            {rootSerial && <span className="ml-1 font-normal text-slate-400">· {rootSerial}</span>}
+            {root?.serial && <span className="ml-1 font-normal text-slate-400">· {root.serial}</span>}
           </DialogTitle>
           <DialogDescription className="sr-only">선택한 일련번호가 거쳐온/거쳐갈 공정 흐름입니다.</DialogDescription>
         </DialogHeader>
@@ -685,56 +833,35 @@ function GenealogyModal({
             <Skeleton className="mx-4 h-4 w-24 rounded-full" />
             <Skeleton className="h-16 w-full rounded-xl" />
           </div>
-        ) : nodes.length <= 1 ? (
+        ) : !trace || !root || trace.nodes.length <= 1 ? (
           <p className="py-10 text-center text-sm text-slate-400">
             연결된 이전·이후 공정 기록이 없습니다.<br />
             <span className="text-xs">(보내기·집계·이동·나누기 시 계보가 기록됩니다.)</span>
           </p>
         ) : (
-          <ol className="relative space-y-0">
-            {nodes.map((n, i) => {
-              const isRoot = trace && n.id === trace.rootId;
-              const parents = incoming.get(n.id) ?? [];
-              // 들어오는 관계 라벨: 집계는 건수까지, 그 외 첫 관계명
-              const mergeCount = parents.filter((p) => p.relation === "merge").length;
-              const relLabel = i === 0 || parents.length === 0 ? null
-                : mergeCount > 0 ? `${RELATION_LABEL.merge} · ${mergeCount}건`
-                  : RELATION_LABEL[parents[0].relation];
-              const is14 = n.karat === "14K";
-              return (
-                <li key={n.id}>
-                  {relLabel && (
-                    <div className="ml-4 flex items-center gap-1.5 py-1 text-[11px] text-slate-400">
-                      <span className="h-4 w-px bg-slate-200 dark:bg-neutral-700" />
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-neutral-800">↓ {relLabel}</span>
-                    </div>
-                  )}
-                  <div className={`rounded-xl border p-3 ${
-                    isRoot
-                      ? "border-blue-400 bg-blue-50/70 ring-1 ring-blue-300 dark:border-blue-700 dark:bg-blue-950/40"
-                      : "border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${is14 ? "text-blue-600 dark:text-blue-400" : ""}`}>
-                        {n.process_name}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
-                        {stageLabel(n.schema_type, n.side)}
-                      </span>
-                      {n.locked && <span className="text-[10px]">🔒</span>}
-                      {isRoot && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white">선택한 행</span>}
-                      <span className="ml-auto text-[10px] tabular-nums text-slate-400">{fmtStamp(n.moved_at ?? n.created_at)}</span>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-                      <span className="font-medium tabular-nums">{n.serial ?? "(번호없음)"}</span>
-                      {n.description && <span className="text-slate-500 dark:text-neutral-400">{n.description}</span>}
-                      <span className="text-slate-400">수량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtInt(n.qty) || "-"}</b></span>
-                      <span className="text-slate-400">중량 <b className="text-slate-600 tabular-nums dark:text-neutral-200">{fmtWeight(n.weight) || "-"}</b></span>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+          <div className="space-y-3">
+            {stack.length > 0 && (
+              <Button variant="outline" size="sm" className="h-7 w-fit px-2 text-xs" onClick={back}>
+                ← 뒤로
+              </Button>
+            )}
+            <TraceNodeCard n={root} isRoot />
+            {(parentsOf.get(root.id)?.length ?? 0) > 0 && (
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-slate-400">⬑ 어디서 왔나 — 이전 경로</div>
+                <TraceTree id={root.id} dir="up" byId={byId} edgesOf={parentsOf} onGoto={goto} seen={new Set([root.id])} />
+              </div>
+            )}
+            {(childrenOf.get(root.id)?.length ?? 0) > 0 && (
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-slate-400">⬐ 어디로 갔나 — 이후 경로</div>
+                <TraceTree id={root.id} dir="down" byId={byId} edgesOf={childrenOf} onGoto={goto} seen={new Set([root.id])} />
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400">
+              카드를 클릭하면 그 행을 기준으로 다시 추적합니다 — 함께 나눠진 조각은 ‘나누기 전 원본’ 카드를 타고 들어가면 보입니다.
+            </p>
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -1141,9 +1268,9 @@ export function ProcessView({
         <p>· 작업후 중량은 작업완료(집계) 창에서 입력, 실중량은 이전 공정에서 넘어오고, Tag중량·로스·출고중량은 <b>자동 계산</b>됩니다.</p>
       </div>
 
-      {/* 계보 추적 모달 (일련번호 클릭) */}
+      {/* 계보 추적 모달 (일련번호 클릭) — key: 추적 결과가 도착하면 리마운트되어 기준 행 초기화 */}
       {traceOpen && (
-        <GenealogyModal trace={trace} loading={traceLoading} onClose={() => setTraceOpen(false)} />
+        <GenealogyModal key={trace?.rootId ?? "loading"} trace={trace} loading={traceLoading} onClose={() => setTraceOpen(false)} />
       )}
 
       {/* 확인 모달 (AlertDialog) */}
