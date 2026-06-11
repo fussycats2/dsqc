@@ -120,8 +120,9 @@ export function TabBar({ processes }: { processes: Process[] }) {
     );
   };
 
+  // z-[26]: 메뉴 스크림(z-[25])보다 위 — 드롭다운 펼친 채 옆 버튼으로 이동할 때 탭바는 또렷하게
   return (
-    <nav className="sticky bottom-0 z-20 flex flex-wrap items-center gap-2 border-t border-gray-300 bg-gray-200 px-2 py-1.5 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] print:hidden dark:border-neutral-700 dark:bg-neutral-900">
+    <nav className="sticky bottom-0 z-[26] flex flex-wrap items-center gap-2 border-t border-gray-300 bg-gray-200 px-2 py-1.5 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] print:hidden dark:border-neutral-700 dark:bg-neutral-900">
       <button type="button" onClick={() => go("/")} onMouseEnter={() => warm("/")} onFocus={() => warm("/")} className={pill(pathname === "/")}>🏠 대시보드</button>
       {entry && (
         <button type="button" onClick={() => go(`/process/${entry.id}`)} onMouseEnter={() => warm(`/process/${entry.id}`)} onFocus={() => warm(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</button>
