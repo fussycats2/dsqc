@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { History, Sparkles } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -41,13 +42,15 @@ export function UpdateHistory() {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}
-        className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700">
-        🆕 업데이트
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700">
+        <Sparkles aria-hidden className="size-3.5" />업데이트
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[min(64rem,calc(100%-2rem))]">
           <DialogHeader>
-            <DialogTitle>📋 업데이트 이력</DialogTitle>
+            <DialogTitle className="flex items-center gap-1.5">
+              <History aria-hidden className="size-4 text-slate-400" />업데이트 이력
+            </DialogTitle>
             <DialogDescription>
               {BUILD_TIME
                 ? `현재 배포 ${BUILD_TIME} (KST)${BUILD_SHA ? ` · ${BUILD_SHA}` : ""}`

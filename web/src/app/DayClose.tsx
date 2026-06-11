@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
+import { CalendarCheck, Loader2, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DateStepper } from "@/components/DateStepper";
 import { DatePicker } from "@/components/DatePicker";
@@ -19,13 +19,37 @@ const nextDay = (d: string) => {
 // 표시용: yyyy-mm-dd → yyyy/mm/dd
 const fmtD = (s?: string | null) => (s ? s.replaceAll("-", "/") : "");
 
-const brand = "bg-[#4b3526] text-white hover:bg-[#3a281c]";
+const brand = "bg-brand text-white hover:bg-brand-strong";
 // 작업일을 따라가는 '원래 날짜'(마감일·변경 원래날짜) 잠금 안내
 const lockedTitle = "작업일에 따라 자동 설정 (상단 작업일에서 변경)";
 
 type ConfirmBox = { title: string; lines: string[]; yesLabel: string; onYes: () => void; infoOnly?: boolean };
 
-export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: string; lotCount: number; stock18: string; stock14: string }) {
+// KPI 스탯 카드 — 현장에서 가장 자주 보는 숫자(재고·데이터·미출고·오차)를 한눈에
+const KPI_TONE = {
+  plain: "border-slate-200 bg-slate-50/60 dark:border-neutral-800 dark:bg-neutral-800/40",
+  emerald: "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30",
+  amber: "border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30",
+  rose: "border-rose-300 bg-rose-50 dark:border-rose-800/60 dark:bg-rose-950/30",
+} as const;
+function Kpi({ label, value, dot, tone = "plain", title }: {
+  label: string; value: string; dot?: string; tone?: keyof typeof KPI_TONE; title?: string;
+}) {
+  return (
+    <div title={title} className={`flex min-w-[92px] flex-col rounded-lg border px-3 py-1.5 ${KPI_TONE[tone]}`}>
+      <span className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-neutral-500">
+        {dot && <span className={`h-2 w-2 rounded-full ${dot}`} />}
+        {label}
+      </span>
+      <span className="text-sm font-bold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+export function DayClose({ workDate, lotCount, stock18, stock14, pendingCnt, errCnt }: {
+  workDate: string; lotCount: number; stock18: string; stock14: string;
+  pendingCnt: number; errCnt: number;
+}) {
   const [src, setSrc] = useState(workDate);
   const [carry, setCarry] = useState(nextDay(workDate));
   const [from, setFrom] = useState(workDate);
@@ -66,7 +90,7 @@ export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: s
   });
 
   const doClose = () => setConfirmBox({
-    title: "📅 일마감",
+    title: "일마감",
     lines: [
       `${fmtD(src)} 현황을 저장하고`,
       `공정 미작업 재고를 ${fmtD(carry)} 로 이월합니다.`,
@@ -95,7 +119,7 @@ export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: s
   });
 
   const doMove = () => setConfirmBox({
-    title: "🔁 날짜 변경",
+    title: "날짜 변경",
     lines: [`${fmtD(from)} 의 데이터를 ${fmtD(to)} 로 옮깁니다.`],
     yesLabel: "변경",
     onYes: () => runMove(),
@@ -103,29 +127,28 @@ export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: s
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* 이 작업일에 데이터가 몇 건 있는지 — 로딩(불러오는 중)과 진짜 0건을 구분하는 표시 */}
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${
-            lotCount > 0
-              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-              : "bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400"
-          }`}
+      {/* KPI 행 — 핵심 숫자를 위로, 마감·날짜변경 컨트롤은 아래로(시각 위계) */}
+      <div className="flex flex-wrap items-stretch gap-2">
+        <Kpi dot="bg-rose-500" label="18K 재고" value={stock18} />
+        <Kpi dot="bg-blue-500" label="14K 재고" value={stock14} />
+        {/* 로딩(불러오는 중)과 진짜 0건을 구분하는 표시 */}
+        <Kpi
+          label={`데이터 · ${fmtD(workDate)}`}
+          value={lotCount > 0 ? `${lotCount}건` : "없음"}
+          tone={lotCount > 0 ? "emerald" : "plain"}
           title="이 작업일에 입력된 데이터 건수 (0이면 실제로 데이터가 없는 날)"
-        >
-          <span className="tabular-nums">{fmtD(workDate)}</span>
-          <span className="text-slate-300 dark:text-neutral-600">·</span>
-          {lotCount > 0 ? (
-            <>
-              데이터 <b className="tabular-nums">{lotCount}</b>건
-            </>
-          ) : (
-            "데이터 없음"
-          )}
-        </span>
+        />
+        <Kpi label="미출고" value={`${pendingCnt}건`} tone={pendingCnt > 0 ? "amber" : "plain"}
+          title="작업완료 후 아직 출고·이관하지 않은 건수" />
+        <Kpi label="중량오차" value={`${errCnt}건`} tone={errCnt > 0 ? "rose" : "plain"}
+          title="입고−재고−출고−로스가 0이 아닌 공정 수" />
+      </div>
 
-        {/* 일마감 */}
-        <span className="text-sm font-semibold">📅 일마감</span>
+      {/* 컨트롤 행 — 일마감·날짜 변경 */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-2.5 dark:border-neutral-800">
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <CalendarCheck aria-hidden className="size-4 text-slate-400" />일마감
+        </span>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-slate-500 dark:text-neutral-400">마감일</label>
           <DatePicker value={src} locked title={lockedTitle} />
@@ -137,9 +160,10 @@ export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: s
           </Button>
         </div>
 
-        {/* 날짜 변경 */}
-        <span className="text-slate-200 dark:text-neutral-700">|</span>
-        <span className="text-sm font-semibold">🔁 날짜 변경</span>
+        <span aria-hidden className="h-4 w-px shrink-0 bg-slate-200 dark:bg-neutral-700" />
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <Repeat aria-hidden className="size-4 text-slate-400" />날짜 변경
+        </span>
         <div className="flex items-center gap-1.5">
           <DatePicker value={from} locked title={lockedTitle} />
           <span className="text-slate-300 dark:text-neutral-600">→</span>
@@ -148,20 +172,6 @@ export function DayClose({ workDate, lotCount, stock18, stock14 }: { workDate: s
         </div>
 
         {msg && <span className="text-xs text-slate-500 dark:text-neutral-400">{msg}</span>}
-
-        {/* 18K·14K 재고 — 오른쪽 정렬(상단 KPI 박스 대체) */}
-        <div className="ml-auto flex items-center gap-4 text-sm">
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-rose-500" />
-            <span className="text-slate-500 dark:text-neutral-400">18K 재고</span>
-            <b className="text-base tabular-nums">{stock18}</b>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-blue-500" />
-            <span className="text-slate-500 dark:text-neutral-400">14K 재고</span>
-            <b className="text-base tabular-nums">{stock14}</b>
-          </span>
-        </div>
       </div>
 
       {/* 확인 모달 (AlertDialog — 브라우저 confirm 대체) */}

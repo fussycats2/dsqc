@@ -2,12 +2,13 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, Upload } from "lucide-react";
+import { Download, HardDriveDownload, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { downloadFile } from "@/lib/downloadFile";
 import type { SchemaType } from "@/lib/types";
 
 const fmtD = (s: string) => s.replaceAll("-", "/");
@@ -24,7 +25,20 @@ export function Backup({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
+  const [downloading, setDownloading] = useState(false);
   const [box, setBox] = useState<{ title: string; lines: string[] } | null>(null);
+
+  // 백업 다운로드 — 서버가 하루치 전량 조회+엑셀 생성하는 동안 스피너 표시(무응답 오인 방지)
+  const onExport = async () => {
+    setDownloading(true);
+    try {
+      await downloadFile(`/api/upload/export?date=${workDate}`);
+    } catch (e) {
+      setBox({ title: "백업 실패", lines: [(e as Error).message] });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const onImport = (file: File) =>
     start(async () => {
@@ -57,14 +71,16 @@ export function Backup({
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-sm font-semibold">💾 작업 데이터 백업/복원 (엑셀)</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <HardDriveDownload aria-hidden className="size-4 text-slate-400" />작업 데이터 백업/복원 (엑셀)
+        </span>
         <span className="text-xs text-slate-400 dark:text-neutral-500">
           선택 작업일 {fmtD(workDate)} · 전 공정 시트
         </span>
         <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline"
-            onClick={() => { window.location.href = `/api/upload/export?date=${workDate}`; }}>
-            <Download />엑셀 백업
+          <Button size="sm" variant="outline" disabled={downloading} onClick={onExport}>
+            {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+            {downloading ? "백업 만드는 중…" : "엑셀 백업"}
           </Button>
           <Button size="sm" variant="outline" disabled={pending} onClick={() => fileRef.current?.click()}>
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}
@@ -96,7 +112,7 @@ export function Backup({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction className="bg-[#4b3526] text-white hover:bg-[#3a281c]">확인</AlertDialogAction>
+            <AlertDialogAction className="bg-brand text-white hover:bg-brand-strong">확인</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

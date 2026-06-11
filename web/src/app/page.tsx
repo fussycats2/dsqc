@@ -1,3 +1,4 @@
+import { Inbox, LayoutDashboard, TriangleAlert } from "lucide-react";
 import { ClientLink } from "@/components/ClientLink";
 import { createClient } from "@/lib/supabase/server";
 import { envMissing, getProcesses } from "@/lib/getProcesses";
@@ -41,6 +42,18 @@ const thR =
   "px-2 py-1.5 text-right font-medium text-slate-400 dark:text-neutral-500";
 const tdR = "px-2 py-1.5 text-right tabular-nums";
 
+// 빈 표 공통 행 — 아이콘+여백으로 덜 황량하게
+function EmptyRow({ colSpan }: { colSpan: number }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-2 py-6 text-center text-slate-300 dark:text-neutral-600">
+        <Inbox aria-hidden className="mx-auto mb-1 size-4 opacity-60" />
+        데이터 없음
+      </td>
+    </tr>
+  );
+}
+
 function CardHeader({
   title,
   accent,
@@ -66,14 +79,14 @@ function CardHeader({
   );
 }
 
-// 오차 셀: 0이면 흐림, 0 아니면 빨강 강조
+// 오차 셀: 0이면 — 로 비워 시선 분산을 줄이고, 0 아닐 때만 빨강 강조
 function ErrCell({ v }: { v: number }) {
   const e = round2(v);
+  if (e === 0)
+    return <td className={tdR}><span className="text-slate-300 dark:text-neutral-600">—</span></td>;
   return (
     <td className={tdR}>
-      <span
-        className={`rounded-md px-1.5 py-0.5 ${e !== 0 ? "bg-rose-50 font-semibold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400" : "text-slate-300 dark:text-neutral-600"}`}
-      >
+      <span className="rounded-md bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
         {fmtWeight(e)}
       </span>
     </td>
@@ -122,14 +135,7 @@ function ProcessCard({
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-neutral-800/60">
           {procs.length === 0 ? (
-            <tr>
-              <td
-                colSpan={6}
-                className="px-2 py-6 text-center text-slate-300 dark:text-neutral-600"
-              >
-                데이터 없음
-              </td>
-            </tr>
+            <EmptyRow colSpan={6} />
           ) : (
             procs.map((p) => {
               const a = A(p.id);
@@ -221,14 +227,7 @@ function FlowCard({
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-neutral-800/60">
           {procs.length === 0 ? (
-            <tr>
-              <td
-                colSpan={3}
-                className="px-2 py-6 text-center text-slate-300 dark:text-neutral-600"
-              >
-                데이터 없음
-              </td>
-            </tr>
+            <EmptyRow colSpan={3} />
           ) : (
             procs.map((p) => {
               const a = A(p.id);
@@ -287,7 +286,7 @@ export default async function Home() {
         <h1 className="mb-4 text-2xl font-bold">dsqc — 제조공정 관리</h1>
         <div className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-sm dark:bg-amber-950/40">
           <p className="mb-2 font-semibold">
-            ⚙️ Supabase 연결이 아직 설정되지 않았습니다.
+            Supabase 연결이 아직 설정되지 않았습니다.
           </p>
           <ol className="ml-5 list-decimal space-y-1">
             <li>supabase.com에서 무료 프로젝트 생성</li>
@@ -389,7 +388,9 @@ export default async function Home() {
 
       {/* 상단 제목 — 설명은 제목 오른쪽에 인라인 */}
       <div className="flex flex-wrap items-baseline gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+          <LayoutDashboard aria-hidden className="size-5 text-slate-400" />대시보드
+        </h1>
         <p className="text-xs text-slate-400 dark:text-neutral-500">
           파트별 현황 — 이름을 누르면 해당 시트로 이동
         </p>
@@ -404,15 +405,18 @@ export default async function Home() {
           lotCount={lotCount}
           stock18={fmtWeight(sumStock(work("18K")))}
           stock14={fmtWeight(sumStock(work("14K")))}
+          pendingCnt={pendingTotal}
+          errCnt={errs.length}
         />
 
         {/* 알림은 있을 때만 렌더 — 일마감 박스 바로 아래에 좁은 간격으로 표시 */}
         {(pendingTotal > 0 || errs.length > 0) && (
           <div className="space-y-2">
             {pendingTotal > 0 && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 duration-300 animate-in fade-in-0 slide-in-from-top-1 dark:border-amber-800/60 dark:bg-amber-950/30">
                 <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
-                  ⚠️ 작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
+                  <TriangleAlert aria-hidden className="size-4 shrink-0" />
+                  작업완료 후 미출고 {pendingTotal}건 — 출고/이관이 필요합니다
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {pending.map(({ p, cnt }) => (
@@ -428,9 +432,10 @@ export default async function Home() {
               </div>
             )}
             {errs.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 dark:border-rose-800/60 dark:bg-rose-950/30">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 duration-300 animate-in fade-in-0 slide-in-from-top-1 dark:border-rose-800/60 dark:bg-rose-950/30">
                 <div className="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
-                  ⚠️ 공정 중량오차 {errs.length}건 — 집계 불일치 확인 필요
+                  <TriangleAlert aria-hidden className="size-4 shrink-0" />
+                  공정 중량오차 {errs.length}건 — 집계 불일치 확인 필요
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {errs.map(({ p, err }) => (

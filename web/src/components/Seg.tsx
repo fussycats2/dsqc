@@ -18,7 +18,7 @@ export function Seg({
           className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
             value === it.key
               ? `${activeBg} border-transparent text-white`
-              : `bg-white hover:bg-gray-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 ${
+              : `bg-white hover:bg-slate-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 ${
                   it.key === "18K"
                     ? "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"
                     : "border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400"

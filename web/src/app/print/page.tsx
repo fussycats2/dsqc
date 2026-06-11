@@ -1,3 +1,4 @@
+import { Printer } from "lucide-react";
 import { ClientLink } from "@/components/ClientLink";
 import { getWorkDate } from "@/lib/workDate";
 import { PRINT_MENU, STOCK_GROUPS } from "@/lib/printSets";
@@ -7,7 +8,10 @@ export default async function PrintMenu() {
   return (
     <main className="flex min-h-[78vh] flex-col items-center justify-center gap-4 p-6">
       <div className="text-center">
-        <h1 className="text-xl font-bold">🖨 인쇄 <span className="text-sm font-normal text-slate-400">{workDate.replaceAll("-", "/")}</span></h1>
+        <h1 className="flex items-center justify-center gap-2 text-xl font-bold">
+          <Printer aria-hidden className="size-5 text-slate-400" />인쇄
+          <span className="text-sm font-normal text-slate-400">{workDate.replaceAll("-", "/")}</span>
+        </h1>
         <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">인쇄할 장부 종류를 고르세요. (선택한 작업일 기준)</p>
       </div>
       <div className="grid w-full max-w-md grid-cols-2 gap-3 sm:grid-cols-3">

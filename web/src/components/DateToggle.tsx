@@ -55,10 +55,10 @@ export function DateToggle() {
 
   return (
     <div className="flex items-center gap-1 text-sm">
-      <span className="text-gray-400 text-xs mr-1 dark:text-neutral-500">작업일</span>
+      <span className="text-slate-400 text-xs mr-1 dark:text-neutral-500">작업일</span>
       <button
         onClick={() => change(shift(date, -1))}
-        className="inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
+        className="inline-flex items-center rounded border border-slate-300 px-1.5 py-1 hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
         aria-label="이전 날짜"
       >
         <ChevronLeft className="size-4" />
@@ -66,7 +66,7 @@ export function DateToggle() {
       <DatePicker value={date} onChange={change} />
       <button
         onClick={() => change(shift(date, 1))}
-        className="inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
+        className="inline-flex items-center rounded border border-slate-300 px-1.5 py-1 hover:bg-slate-100 dark:border-neutral-600 dark:hover:bg-neutral-800"
         aria-label="다음 날짜"
       >
         <ChevronRight className="size-4" />
@@ -76,8 +76,8 @@ export function DateToggle() {
         disabled={isToday}
         className={`px-2 py-0.5 rounded border text-xs ${
           isToday
-            ? "border-gray-200 text-gray-300 dark:border-neutral-700 dark:text-neutral-600"
-            : "border-blue-300 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+            ? "border-slate-200 text-slate-300 dark:border-neutral-700 dark:text-neutral-600"
+            : "border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950"
         }`}
       >
         오늘

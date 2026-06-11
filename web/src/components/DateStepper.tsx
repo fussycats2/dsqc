@@ -13,7 +13,7 @@ function shift(dateStr: string, days: number): string {
 
 // 작업일 토글의 ‹ › Chevron 화살표와 동일한 스타일
 const arrowCls =
-  "inline-flex items-center rounded border border-gray-300 px-1.5 py-1 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800";
+  "inline-flex items-center rounded border border-slate-300 px-1.5 py-1 hover:bg-slate-100 disabled:opacity-50 dark:border-neutral-600 dark:hover:bg-neutral-800";
 
 export function DateStepper({
   value,

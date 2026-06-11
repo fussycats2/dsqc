@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { Check, ChevronUp } from "lucide-react";
+import { Check, ChevronUp, Home, PenLine } from "lucide-react";
 import type { Process } from "@/lib/types";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -41,12 +41,12 @@ export function TabBar({ processes }: { processes: Process[] }) {
 
   // 대시보드/작성은 karat 강조색과 무관한 단독 중립색(진회색)으로 — karat 오해 방지
   const pill = (active: boolean) =>
-    `shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+    `inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
       active
         ? "bg-slate-700 text-white dark:bg-slate-600"
-        : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+        : "text-slate-600 hover:bg-slate-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
     }`;
-  const divider = <span className="shrink-0 text-gray-300 dark:text-neutral-600">|</span>;
+  const divider = <span aria-hidden className="h-4 w-px shrink-0 bg-slate-200 dark:bg-neutral-700" />;
 
   // 분류 드롭다운(위로 펼침) — 현재 karat의 그 분류 공정 목록
   const groupMenu = (g: MenuGroup) => {
@@ -74,7 +74,7 @@ export function TabBar({ processes }: { processes: Process[] }) {
             } ${
               isActiveGroup
                 ? `${accentBg} border-transparent text-white`
-                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
             }`}
           >
             {g.label}
@@ -115,10 +115,10 @@ export function TabBar({ processes }: { processes: Process[] }) {
 
   // z-[26]: 메뉴 스크림(z-[25])보다 위 — 드롭다운 펼친 채 옆 버튼으로 이동할 때 탭바는 또렷하게
   return (
-    <nav className="sticky bottom-0 z-[26] flex flex-wrap items-center gap-2 border-t border-gray-300 bg-gray-200 px-2 py-1.5 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] print:hidden dark:border-neutral-700 dark:bg-neutral-900">
-      <button type="button" onClick={() => go("/")} onMouseEnter={() => warm("/")} onFocus={() => warm("/")} className={pill(pathname === "/")}>🏠 대시보드</button>
+    <nav className="sticky bottom-0 z-[26] flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white/90 px-2 py-1.5 shadow-[0_-1px_3px_rgba(0,0,0,0.05)] backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
+      <button type="button" onClick={() => go("/")} onMouseEnter={() => warm("/")} onFocus={() => warm("/")} className={pill(pathname === "/")}><Home className="size-3.5" />대시보드</button>
       {entry && (
-        <button type="button" onClick={() => go(`/process/${entry.id}`)} onMouseEnter={() => warm(`/process/${entry.id}`)} onFocus={() => warm(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}>✏️ 작성</button>
+        <button type="button" onClick={() => go(`/process/${entry.id}`)} onMouseEnter={() => warm(`/process/${entry.id}`)} onFocus={() => warm(`/process/${entry.id}`)} className={pill(pathname === `/process/${entry.id}`)}><PenLine className="size-3.5" />작성</button>
       )}
       {divider}
       <Seg items={[{ key: "18K", label: "18K" }, { key: "14K", label: "14K" }]} value={karat} onChange={(k) => setKarat(k as Karat)} activeBg={accentBg} />
@@ -129,10 +129,10 @@ export function TabBar({ processes }: { processes: Process[] }) {
       {/* 오른쪽 그룹: (공정시트면 현재 공정 표시) + 업데이트 이력 — 제일 오른쪽 고정 */}
       <div className="ml-auto flex items-center gap-2">
         {activeProcess && activeProcess.schema_type !== "entry" && (
-          <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-neutral-400">
+          <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-neutral-400">
             <span className={`font-bold ${karat === "18K" ? "text-rose-600 dark:text-rose-400" : "text-blue-600 dark:text-blue-400"}`}>{karat}</span>
-            <span className="text-gray-300 dark:text-neutral-600">›</span>
-            <span className="text-base font-bold text-gray-800 dark:text-neutral-100">{activeProcess.name}</span>
+            <span className="text-slate-300 dark:text-neutral-600">›</span>
+            <span className="text-base font-bold text-slate-800 dark:text-neutral-100">{activeProcess.name}</span>
           </span>
         )}
         <UpdateHistory />

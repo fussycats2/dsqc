@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, Printer, Save, Send, Upload } from "lucide-react";
+import { CalendarCheck, Download, FileSpreadsheet, Loader2, Printer, Repeat, Save, Send, Upload } from "lucide-react";
 import { fmtWeight } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { DateStepper } from "@/components/DateStepper";
@@ -11,6 +11,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { downloadFile } from "@/lib/downloadFile";
 import { derive, CARRY, PRESERVE, type CellMap } from "@/lib/settlement";
 import { useGridSheet } from "@/lib/useGridSheet";
 import { saveSettlement, carrySettlement, moveSettlement, pushFromLots } from "./settlementActions";
@@ -67,8 +69,21 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     { title: string; lines: string[]; yesLabel: string; onYes: () => void; infoOnly?: boolean } | null
   >(null);
   const [pending, start] = useTransition();
+  const [downloading, setDownloading] = useState(false);
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 백업 다운로드 — 서버가 엑셀을 생성하는 동안 스피너 표시(무응답 오인 방지)
+  const doExport = async () => {
+    setDownloading(true);
+    try {
+      await downloadFile(`/api/settlement/export?date=${workDate}`);
+    } catch (e) {
+      toast.error("백업 실패: " + (e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // 자동저장: 사용자가 입력하면 1.5초 후 자동 저장(debounce). '저장' 버튼·나가기 경고는 보조.
   //  · 사용자 입력(set/붙여넣기)만 dirty로 표시 → 초기 로드·날짜 변경·결산전송·가져오기 등 프로그래밍 변경은 제외.
@@ -312,7 +327,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.date)} 마감값을 ${fmtD(r.carryDate)} 전일값으로 이월`);
   });
-  const doCarry = () => setConfirmBox({ title: "📅 결산 마감·이월", lines: [`${fmtD(src)} 결산을 저장(스냅샷)하고`, `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`, "(위탁 분석중량·고정값은 유지)"], yesLabel: "마감·이월", onYes: () => runCarry() });
+  const doCarry = () => setConfirmBox({ title: "결산 마감·이월", lines: [`${fmtD(src)} 결산을 저장(스냅샷)하고`, `마감값을 ${fmtD(carry)} 의 전일값으로 이월합니다.`, "(위탁 분석중량·고정값은 유지)"], yesLabel: "마감·이월", onYes: () => runCarry() });
   const runMove = () => start(async () => {
     const r = await moveSettlement(from, to);
     if (r.blocked) {
@@ -325,7 +340,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     }
     setMsg(r.error ? `오류: ${r.error}` : `${fmtD(r.fromDate)} → ${fmtD(r.toDate)} 로 결산서 날짜 변경`);
   });
-  const doMove = () => setConfirmBox({ title: "🔁 결산서 날짜 변경", lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`], yesLabel: "변경", onYes: () => runMove() });
+  const doMove = () => setConfirmBox({ title: "결산서 날짜 변경", lines: [`${fmtD(from)} 결산서를 ${fmtD(to)} 로 옮깁니다.`], yesLabel: "변경", onYes: () => runMove() });
 
   // 결재란
   const approval = (cols: string[]) => (
@@ -346,22 +361,25 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
       <style dangerouslySetInnerHTML={{ __html: "@media print{@page{size:A4;margin:16mm 8mm 4mm 8mm}}" }} />
       {/* 상단 바 (인쇄 숨김) */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <h1 className="text-xl font-bold tracking-tight">결산서 <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span></h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+          <FileSpreadsheet aria-hidden className="size-5 text-slate-400" />결산서
+          <span className="text-sm font-normal text-slate-400">{fmtD(workDate)}</span>
+        </h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={doPush} disabled={pending} className="bg-indigo-600 text-white hover:bg-indigo-700">
+          <Button size="sm" onClick={doPush} disabled={pending} className="bg-brand text-white hover:bg-brand-strong">
             {pending ? <Loader2 className="animate-spin" /> : <Send />}결산전송
           </Button>
           <span className="min-w-[68px] text-right text-xs text-slate-400 dark:text-neutral-500">
             {autosaving ? "저장 중…" : dirty ? "● 변경됨" : savedAt ? `저장됨 ${savedAt}` : ""}
           </span>
-          <Button size="sm" onClick={doSave} disabled={pending} className="bg-[#4b3526] text-white hover:bg-[#3a281c]">
+          <Button size="sm" onClick={doSave} disabled={pending} className="bg-brand text-white hover:bg-brand-strong">
             {pending ? <Loader2 className="animate-spin" /> : <Save />}저장
           </Button>
           <Button size="sm" variant="outline" onClick={() => window.print()}><Printer />인쇄</Button>
-          <span className="mx-1 text-slate-200 dark:text-neutral-700">|</span>
-          <Button size="sm" variant="outline"
-            onClick={() => { window.location.href = `/api/settlement/export?date=${workDate}`; }}>
-            <Download />엑셀 백업
+          <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-neutral-700" />
+          <Button size="sm" variant="outline" disabled={downloading} onClick={doExport}>
+            {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+            {downloading ? "백업 만드는 중…" : "엑셀 백업"}
           </Button>
           <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={pending}>
             {pending ? <Loader2 className="animate-spin" /> : <Upload />}엑셀 가져오기
@@ -372,19 +390,23 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
       </div>
 
       <section className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm print:hidden dark:border-neutral-800 dark:bg-neutral-900">
-        <span className="text-sm font-semibold">📅 마감·이월</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <CalendarCheck aria-hidden className="size-4 text-slate-400" />마감·이월
+        </span>
         <div className="flex items-center gap-1.5">
           <label className="text-xs text-slate-500">마감일</label>
           <DatePicker value={src} locked title={lockedTitle} />
           <span className="text-slate-300">→</span>
           <label className="text-xs text-slate-500">이월일</label>
           <DateStepper value={carry} onChange={setCarry} />
-          <Button size="sm" className="bg-[#4b3526] text-white hover:bg-[#3a281c]" onClick={doCarry} disabled={pending}>
+          <Button size="sm" className="bg-brand text-white hover:bg-brand-strong" onClick={doCarry} disabled={pending}>
             {pending && <Loader2 className="animate-spin" />}마감·이월
           </Button>
         </div>
-        <span className="text-slate-200 dark:text-neutral-700">|</span>
-        <span className="text-sm font-semibold">🔁 날짜 변경</span>
+        <span aria-hidden className="h-4 w-px shrink-0 bg-slate-200 dark:bg-neutral-700" />
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <Repeat aria-hidden className="size-4 text-slate-400" />날짜 변경
+        </span>
         <div className="flex items-center gap-1.5">
           <DatePicker value={from} locked title={lockedTitle} />
           <span className="text-slate-300">→</span>
@@ -426,7 +448,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
           </AlertDialogHeader>
           <AlertDialogFooter>
             {!confirmBox?.infoOnly && <AlertDialogCancel>취소</AlertDialogCancel>}
-            <AlertDialogAction className="bg-[#4b3526] text-white hover:bg-[#3a281c]"
+            <AlertDialogAction className="bg-brand text-white hover:bg-brand-strong"
               onClick={() => { const fn = confirmBox?.onYes; fn?.(); }}>
               {confirmBox?.yesLabel}
             </AlertDialogAction>

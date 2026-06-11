@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // 단일 사업장 공용 계정 1개 — 이메일은 고정(env)하고 비밀번호만 입력
 const DEFAULT_EMAIL = process.env.NEXT_PUBLIC_LOGIN_EMAIL ?? "";
@@ -82,6 +83,11 @@ export default function LoginPage() {
         <div className="absolute -left-32 -top-32 size-96 rounded-full bg-amber-200/50 blur-3xl dark:bg-amber-500/10" />
         <div className="absolute -bottom-40 -right-28 size-[30rem] rounded-full bg-[#7a5c43]/25 blur-3xl dark:bg-[#7a5c43]/20" />
         <div className="absolute left-1/2 top-1/4 size-80 -translate-x-1/2 rounded-full bg-rose-100/60 blur-3xl dark:bg-rose-500/5" />
+      </div>
+
+      {/* 우상단 — 다크 모드 토글(좌하단 정보 카드와 같은 유리 카드 스타일) */}
+      <div className="absolute right-5 top-4 rounded-xl bg-white/60 px-3 py-1.5 shadow-sm ring-1 ring-white/70 backdrop-blur-md dark:bg-neutral-900/70 dark:ring-neutral-800">
+        <ThemeToggle />
       </div>
 
       {/* 로그인 카드 — 반투명+블러, 부드러운 등장 */}

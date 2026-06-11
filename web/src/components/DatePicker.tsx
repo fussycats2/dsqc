@@ -96,7 +96,7 @@ export function DatePicker({
           className ??
           (locked
             ? "flex items-center gap-1.5 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-sm tabular-nums text-slate-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400"
-            : "flex items-center gap-1.5 rounded border border-gray-300 px-2 py-0.5 text-sm tabular-nums hover:bg-gray-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:hover:bg-neutral-800")
+            : "flex items-center gap-1.5 rounded border border-slate-300 px-2 py-0.5 text-sm tabular-nums hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:hover:bg-neutral-800")
         }
         aria-haspopup="dialog"
         aria-expanded={open}

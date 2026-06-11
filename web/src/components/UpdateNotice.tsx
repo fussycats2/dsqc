@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -43,15 +44,17 @@ export function UpdateNotice() {
     <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[min(64rem,calc(100%-2rem))]">
         <DialogHeader>
-          <DialogTitle>🆕 새로운 업데이트 안내</DialogTitle>
+          <DialogTitle className="flex items-center gap-1.5">
+            <Sparkles aria-hidden className="size-4 text-slate-400" />새로운 업데이트 안내
+          </DialogTitle>
           <DialogDescription>
-            최근 변경된 내용입니다. 전체 이력은 하단 탭의 ‘🆕 업데이트’에서 볼 수 있습니다.
+            최근 변경된 내용입니다. 전체 이력은 하단 탭의 ‘업데이트’에서 볼 수 있습니다.
           </DialogDescription>
         </DialogHeader>
         <EntryCard entry={LATEST} highlight />
         <DialogFooter>
           <Button variant="outline" onClick={close}>닫기</Button>
-          <Button onClick={dontShowAgain} className="bg-[#4b3526] text-white hover:bg-[#3a281c]">
+          <Button onClick={dontShowAgain} className="bg-brand text-white hover:bg-brand-strong">
             다시 보지 않기
           </Button>
         </DialogFooter>

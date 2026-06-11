@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Check } from "lucide-react";
+import { Check, Home, PenLine } from "lucide-react";
 import type { Process } from "@/lib/types";
 import { MENU_GROUPS, type MenuGroup } from "@/lib/menuGroups";
 import { useKarat } from "@/components/KaratContext";
@@ -70,7 +70,7 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
       ? "text-rose-600 data-[highlighted]:text-rose-600 dark:text-rose-400"
       : "text-blue-600 data-[highlighted]:text-blue-600 dark:text-blue-400";
 
-  const topItem = (href: string, label: string) => {
+  const topItem = (href: string, label: React.ReactNode) => {
     const active = pathname === href;
     return (
       <ContextMenuItem
@@ -78,7 +78,7 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
         onFocus={() => warm(href)}
         className={`justify-between gap-3 ${active ? "font-bold" : ""}`}
       >
-        {label}
+        <span className="flex items-center gap-1.5">{label}</span>
         {active && <Check className="size-3.5" />}
       </ContextMenuItem>
     );
@@ -160,8 +160,8 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
             />
           </div>
           <ContextMenuSeparator />
-          {topItem("/", "🏠 대시보드")}
-          {entry && topItem(`/process/${entry.id}`, "✏️ 작성")}
+          {topItem("/", <><Home className="size-3.5" />대시보드</>)}
+          {entry && topItem(`/process/${entry.id}`, <><PenLine className="size-3.5" />작성</>)}
         </ContextMenuContent>
       </ContextMenu>
       <MenuScrim show={open} />

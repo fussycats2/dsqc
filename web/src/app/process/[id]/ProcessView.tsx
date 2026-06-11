@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, GitBranch, Inbox, Loader2, Lock, LockOpen, Pencil, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, Lot, Process, TraceResult, TraceNode, TraceEdge } from "@/lib/types";
 import { fmtWeight, fmtInt, fmtKstDayTime, round2, lossOf, lossRateOf, shipWeight, stageLabel, RELATION_LABEL } from "@/lib/types";
@@ -78,23 +78,29 @@ function AutoFitText({ text, align }: { text: string; align: "left" | "center" }
   const wrapRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef<HTMLSpanElement>(null);
   const [scale, setScale] = useState(1);
+  // 하한 배율(0.55)로도 안 들어가는 초과분 — 중앙 정렬을 유지하면 앞부분이 왼쪽 바깥으로
+  // 잘려 나가 텍스트가 안 보이므로, 이때는 왼쪽 기준으로 전환해 앞부분부터 보여준다(뒷부분만 클립)
+  const [overflowed, setOverflowed] = useState(false);
   useEffect(() => {
     const wrap = wrapRef.current, span = spanRef.current;
     if (!wrap || !span) return;
     const fit = () => {
       const avail = wrap.clientWidth, natural = span.scrollWidth;
       // avail>0 일 때만 축소(레이아웃 전 0폭 측정으로 인한 깜빡임 방지)
-      setScale(avail > 0 && natural > avail ? Math.max(0.55, avail / natural) : 1);
+      const s = avail > 0 && natural > avail ? Math.max(0.55, avail / natural) : 1;
+      setScale(s);
+      setOverflowed(avail > 0 && natural * s > avail + 1);
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(wrap);
     return () => ro.disconnect();
   }, [text]);
+  const centered = align === "center" && !overflowed;
   return (
-    <div ref={wrapRef} className={`overflow-hidden ${align === "center" ? "text-center" : ""}`}>
+    <div ref={wrapRef} className={`overflow-hidden ${centered ? "text-center" : "text-left"}`}>
       <span ref={spanRef} className="inline-block whitespace-nowrap align-middle"
-        style={{ transformOrigin: align === "center" ? "center" : "left center", transform: `scale(${scale})` }}>
+        style={{ transformOrigin: centered ? "center" : "left center", transform: `scale(${scale})` }}>
         {text}
       </span>
     </div>
@@ -223,7 +229,9 @@ function LotTable({
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={columns.length + 1}
-                className="px-3 py-8 text-center text-slate-300 dark:text-neutral-600">데이터 없음</td></tr>
+                className="px-3 py-8 text-center text-slate-300 dark:text-neutral-600">
+                <Inbox aria-hidden className="mx-auto mb-1 size-4 opacity-60" />데이터 없음
+              </td></tr>
             ) : (
               rows.map((r, ri) => {
                 const checked = selected.has(r.id);
@@ -241,8 +249,9 @@ function LotTable({
                     </td>
                     {columns.map((c, i) => {
                       const numeric = isNumKind(c.kind) || !!c.computed;
-                      // 내역·수량·비고는 중앙 정렬(요청). 수량은 숫자라 tabular-nums 유지.
-                      const centered = c.key === "description" || c.key === "qty" || c.key === "note";
+                      // 수량만 중앙 정렬(숫자라 tabular-nums 유지).
+                      // 내역·비고는 중앙 정렬 시 긴 텍스트 앞부분이 잘려 보여 왼쪽 정렬로 변경(요청).
+                      const centered = c.key === "qty";
                       const align = centered
                         ? `text-center${c.key === "qty" ? " tabular-nums" : ""}`
                         : numeric ? "text-right tabular-nums"
@@ -267,7 +276,7 @@ function LotTable({
                               <TooltipTrigger asChild>
                                 <button type="button" onClick={() => onTrace(r.id)}
                                   className="group/serial -mx-1 inline-flex max-w-full items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-200/60 dark:hover:bg-neutral-700/60">
-                                  {locked && <span className="shrink-0">🔒</span>}
+                                  {locked && <Lock aria-hidden className="size-3 shrink-0 text-slate-400" />}
                                   <span className="min-w-0 truncate font-medium tabular-nums text-slate-700 transition-colors group-hover/serial:text-blue-600 dark:text-neutral-200 dark:group-hover/serial:text-blue-400">
                                     {fmtCell(r[c.key], c.kind) || "(번호없음)"}
                                   </span>
@@ -356,7 +365,10 @@ function EditPanel({
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1100px]" onKeyDown={focusNextInput}>
         <DialogHeader>
-          <DialogTitle>✏️ 행 수정 <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span></DialogTitle>
+          <DialogTitle className="flex items-center gap-1.5">
+            <Pencil aria-hidden className="size-4 text-slate-400" />행 수정
+            <span className="font-normal text-slate-400">· {row.serial ?? "(번호없음)"}</span>
+          </DialogTitle>
           <DialogDescription className="sr-only">선택한 행의 값을 수정합니다.</DialogDescription>
         </DialogHeader>
         {/* 칸 폭을 원본 표 열폭(c.width)에 맞추고 한 줄로 흐르게 배치 — 표와 동일한 감각 */}
@@ -551,7 +563,7 @@ function CompleteModal({
             로스율 <b className="tabular-nums">{lossRate == null ? "—" : lossRate.toFixed(1) + "%"}</b>
           </div>
         </div>
-        <p className="text-[11px] text-slate-400">※ 작업후 중량을 비워두면 나중에 ‘✏️ 수정’ 버튼으로 입력할 수 있습니다.</p>
+        <p className="text-[11px] text-slate-400">※ 작업후 중량을 비워두면 나중에 ‘수정’ 버튼으로 입력할 수 있습니다.</p>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>취소</Button>
           <Button onClick={() => onConfirm(a)} disabled={pending}
@@ -725,7 +737,7 @@ function TraceNodeCard({ n, isRoot, onClick }: { n: TraceNode; isRoot?: boolean;
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
           {stageLabel(n.schema_type, n.side)}
         </span>
-        {n.locked && <span className="text-[10px]">🔒</span>}
+        {n.locked && <Lock aria-hidden className="size-3 shrink-0 text-slate-400" />}
         {isVirtualId(n.id) && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">나누기 전 원본</span>
         )}
@@ -819,8 +831,9 @@ function GenealogyModal({
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>🧬 계보 추적
-            {root?.serial && <span className="ml-1 font-normal text-slate-400">· {root.serial}</span>}
+          <DialogTitle className="flex items-center gap-1.5">
+            <GitBranch aria-hidden className="size-4 text-slate-400" />계보 추적
+            {root?.serial && <span className="font-normal text-slate-400">· {root.serial}</span>}
           </DialogTitle>
           <DialogDescription className="sr-only">선택한 일련번호가 거쳐온/거쳐갈 공정 흐름입니다.</DialogDescription>
         </DialogHeader>
@@ -938,7 +951,7 @@ export function ProcessView({
 
   // 확인 모달(AlertDialog) 상태 — 알림은 sonner toast()로 직접 호출
   const [confirmBox, setConfirmBox] = useState<
-    { text: string; onYes: () => void; yesLabel?: string; altLabel?: string; onAlt?: () => void } | null
+    { text: React.ReactNode; onYes: () => void; yesLabel?: string; altLabel?: string; onAlt?: () => void } | null
   >(null);
 
   // 표 헤더 sticky 위치 = 전역헤더(49px) + 액션 툴바 실측 높이.
@@ -1086,89 +1099,108 @@ export function ProcessView({
               선택 중량 합 {fmtWeight(selWeight)}
             </span>
           )}
-          <span className="text-slate-200 dark:text-neutral-700">|</span>
+          {/* 선택 0건 안내 — 버튼들이 왜 비활성인지 한 줄로 */}
+          {nIn + nOut === 0 && !pending && (
+            <span className="text-[11px] text-slate-300 dark:text-neutral-600">
+              행을 체크하면 작업 버튼이 켜집니다
+            </span>
+          )}
 
-          {isWork ? (
-            <>
+          {/* 왼쪽 표(작업중/입고) 대상 액션 그룹 — 어느 쪽 선택에 적용되는지 박스+라벨로 구분 */}
+          <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-100/80 py-1 pl-2 pr-1 dark:bg-neutral-800/60">
+            <span className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-neutral-500">
+              {isWork ? "작업중" : "입고"}
+            </span>
+            {isWork ? (
               <ActionBtn tone="primary" disabled={pending || nIn === 0 || hasLocked}
                 onClick={() => setCompleteOpen(true)}>
                 작업완료(집계)
               </ActionBtn>
-            </>
-          ) : (
-            <>
-              <TargetAction label="공정투입" tone="indigo" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
-                onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 공정투입`)} />
-              <TargetAction label="타부서출고" tone="default" targets={otherIoTargets} groupOf={ioGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
-                onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서출고`)} />
-            </>
-          )}
-          {/* 나누기 (작업중/입고 단건) — 갯수는 모달 안에서 행 추가로 조절 */}
-          <ActionBtn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
-            onClick={() => setSplitRowId(inIds[0])}>나누기</ActionBtn>
-          {/* 목표중량 조합 찾기 (공정 전용) */}
-          {isWork && (
-            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-neutral-800">
-              <input value={target} inputMode="decimal" placeholder="목표중량"
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/,/g, "");
-                  if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) setTarget(raw);
-                }}
-                onBlur={() => {
-                  const n = Number(target.replace(/,/g, ""));
-                  if (target !== "" && !isNaN(n)) setTarget(fmtWeight(n));
-                }}
-                className="w-24 rounded-md bg-white px-2 py-1 text-center text-xs tabular-nums dark:bg-neutral-900" />
-              <ActionBtn tone="primary" disabled={pending || hasLocked || nOut > 0}
-                title={hasLocked || nOut > 0 ? "작업중(미완료) 행만 체크한 상태에서 사용할 수 있습니다" : undefined}
-                onClick={runFind}>조합 찾기</ActionBtn>
-            </div>
-          )}
-          <ActionBtn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
-            onClick={() => askConfirm(`${isWork ? "작업중" : "입고"} ${nIn}건을 삭제할까요?`,
-              () => run(() => deleteLots(process.id, inIds), (r) => `${r.deleted}건 삭제`))}>
-            {isWork ? "작업중 삭제" : "입고 삭제"}
-          </ActionBtn>
+            ) : (
+              <>
+                <TargetAction label="공정투입" tone="indigo" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
+                  onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 공정투입`)} />
+                <TargetAction label="타부서출고" tone="default" targets={otherIoTargets} groupOf={ioGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
+                  onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서출고`)} />
+              </>
+            )}
+            {/* 나누기 (작업중/입고 단건) — 갯수는 모달 안에서 행 추가로 조절 */}
+            <ActionBtn tone="amber" disabled={pending || nIn !== 1 || hasLocked}
+              onClick={() => setSplitRowId(inIds[0])}>나누기</ActionBtn>
+            {/* 목표중량 조합 찾기 (공정 전용) */}
+            {isWork && (
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-neutral-700 dark:bg-neutral-900">
+                <input value={target} inputMode="decimal" placeholder="목표중량"
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/,/g, "");
+                    if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) setTarget(raw);
+                  }}
+                  onBlur={() => {
+                    const n = Number(target.replace(/,/g, ""));
+                    if (target !== "" && !isNaN(n)) setTarget(fmtWeight(n));
+                  }}
+                  className="w-24 rounded-md bg-slate-100 px-2 py-1 text-center text-xs tabular-nums dark:bg-neutral-800" />
+                <ActionBtn tone="primary" disabled={pending || hasLocked || nOut > 0}
+                  title={hasLocked || nOut > 0 ? "작업중(미완료) 행만 체크한 상태에서 사용할 수 있습니다" : undefined}
+                  onClick={runFind}>조합 찾기</ActionBtn>
+              </div>
+            )}
+            <ActionBtn tone="ghost" disabled={pending || nIn === 0 || hasLocked}
+              onClick={() => askConfirm(`${isWork ? "작업중" : "입고"} ${nIn}건을 삭제할까요?`,
+                () => run(() => deleteLots(process.id, inIds), (r) => `${r.deleted}건 삭제`))}>
+              삭제
+            </ActionBtn>
+          </div>
 
-          <span className="text-slate-200 dark:text-neutral-700">|</span>
-
-          {isWork ? (
-            <>
-              <TargetAction label="공정이관" tone="rose" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nOut === 0 || hasLocked}
-                onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 공정이관`)} />
-              <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
-                onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
-              <TargetAction label="검수출고" tone="default" targets={ioInspTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
-                onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
-            </>
-          ) : (
-            <>
-              <ActionBtn tone="indigo" disabled={pending || nOut === 0 || hasLocked}
-                onClick={() => setTagAdjustOpen(true)}>
-                Tag 보정
-              </ActionBtn>
-              {process.is_inspection && (
-                <ActionBtn tone="default" disabled={pending}
-                  onClick={() => setConfirmBox({
-                    text: "⚠️ Tag 확정은 이 시트만이 아니라 ‘검수 모든 파트’의 현재 작업일 출고행에 일괄 적용됩니다. (실중량이 있고 Tag중량이 빈 행의 Tag중량을 Tag값으로 채움) 실행할까요?",
-                    yesLabel: "검수 전체 적용",
-                    onYes: () => run(() => tagConfirm(), (r) => `Tag 확정 ${r.filled}건`),
-                  })}>
-                  Tag 확정
+          {/* 오른쪽 표(완료/출고) 대상 액션 그룹 */}
+          <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-100/80 py-1 pl-2 pr-1 dark:bg-neutral-800/60">
+            <span className="text-[10px] font-bold tracking-wide text-slate-400 dark:text-neutral-500">
+              {isWork ? "완료" : "출고"}
+            </span>
+            {isWork ? (
+              <>
+                <TargetAction label="공정이관" tone="rose" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nOut === 0 || hasLocked}
+                  onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 공정이관`)} />
+                <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
+                  onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
+                <TargetAction label="검수출고" tone="default" targets={ioInspTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
+                  onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
+              </>
+            ) : (
+              <>
+                <ActionBtn tone="indigo" disabled={pending || nOut === 0 || hasLocked}
+                  onClick={() => setTagAdjustOpen(true)}>
+                  Tag 보정
                 </ActionBtn>
-              )}
-            </>
-          )}
-          <ActionBtn tone="ghost" disabled={pending || nOut === 0 || hasLocked}
-            onClick={() => askConfirm(`${isWork ? "완료" : "출고"} ${nOut}건을 삭제할까요?`,
-              () => run(() => deleteLots(process.id, outIds), (r) => `${r.deleted}건 삭제`))}>
-            {isWork ? "완료 삭제" : "출고 삭제"}
-          </ActionBtn>
+                {process.is_inspection && (
+                  <ActionBtn tone="default" disabled={pending}
+                    onClick={() => setConfirmBox({
+                      text: (
+                        <>
+                          <TriangleAlert aria-hidden className="mr-1 inline size-4 align-[-2px] text-amber-500" />
+                          Tag 확정은 이 시트만이 아니라 ‘검수 모든 파트’의 현재 작업일 출고행에 일괄 적용됩니다.
+                          (실중량이 있고 Tag중량이 빈 행의 Tag중량을 Tag값으로 채움) 실행할까요?
+                        </>
+                      ),
+                      yesLabel: "검수 전체 적용",
+                      onYes: () => run(() => tagConfirm(), (r) => `Tag 확정 ${r.filled}건`),
+                    })}>
+                    Tag 확정
+                  </ActionBtn>
+                )}
+              </>
+            )}
+            <ActionBtn tone="ghost" disabled={pending || nOut === 0 || hasLocked}
+              onClick={() => askConfirm(`${isWork ? "완료" : "출고"} ${nOut}건을 삭제할까요?`,
+                () => run(() => deleteLots(process.id, outIds), (r) => `${r.deleted}건 삭제`))}>
+              삭제
+            </ActionBtn>
+          </div>
 
           {/* 수정 + 잠금행 해제·삭제 (맨 오른쪽) */}
           <div className="ml-auto flex items-center gap-2">
             <ActionBtn tone="default" disabled={pending || nIn + nOut !== 1}
-              onClick={() => setEditId(inIds[0] ?? outIds[0])}>✏️ 수정</ActionBtn>
+              onClick={() => setEditId(inIds[0] ?? outIds[0])}><Pencil />수정</ActionBtn>
             <ActionBtn tone="rose" disabled={pending || selectedLocked.length === 0}
               onClick={() => setConfirmBox({
                 text: `잠긴 ${selectedLocked.length}건을 어떻게 할까요?`,
@@ -1177,7 +1209,7 @@ export function ProcessView({
                 yesLabel: "삭제",
                 onYes: () => run(() => deleteLots(process.id, selectedLocked, true), (r) => `잠금행 ${r.deleted}건 삭제`),
               })}>
-              🔓 잠금 해제·삭제
+              <LockOpen />잠금 해제·삭제
             </ActionBtn>
           </div>
         </div>
@@ -1263,8 +1295,8 @@ export function ProcessView({
         <p>· 행을 누르면 <b>선택(체크)</b>, <b className="text-blue-500">일련번호</b>를 누르면 그 품목이 <b>거쳐온 공정 이력</b>을 볼 수 있습니다.</p>
         <p>· 왼쪽·오른쪽 표는 <b>동시에 선택할 수 없습니다</b> (처리 방식이 다릅니다).</p>
         <p>· 일련번호는 공정을 옮겨도 <b>그대로 유지</b>됩니다 (작업완료·나누기 때만 형태가 바뀝니다).</p>
-        <p>· 처리가 끝난 행은 🔒 로 <b>잠깁니다</b> — 맨 오른쪽 ‘잠금 해제·삭제’로만 풀거나 지울 수 있습니다.</p>
-        <p>· 표는 보기 전용입니다 — 값 수정은 ‘✏️ 수정’·‘Tag 보정’ 버튼으로 뜨는 입력 창에서만 합니다.</p>
+        <p>· 처리가 끝난 행은 <Lock aria-hidden className="inline size-3 align-[-1px]" /> 로 <b>잠깁니다</b> — 맨 오른쪽 ‘잠금 해제·삭제’로만 풀거나 지울 수 있습니다.</p>
+        <p>· 표는 보기 전용입니다 — 값 수정은 ‘수정’·‘Tag 보정’ 버튼으로 뜨는 입력 창에서만 합니다.</p>
         <p>· 작업후 중량은 작업완료(집계) 창에서 입력, 실중량은 이전 공정에서 넘어오고, Tag중량·로스·출고중량은 <b>자동 계산</b>됩니다.</p>
       </div>
 

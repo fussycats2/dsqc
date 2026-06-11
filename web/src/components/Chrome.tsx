@@ -8,6 +8,7 @@ import { TabBar } from "@/components/TabBar";
 import { KaratProvider } from "@/components/KaratContext";
 import { NavContextMenu } from "@/components/NavContextMenu";
 import { DateToggle } from "@/components/DateToggle";
+import { FontSizeToggle } from "@/components/FontSizeToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 import { SessionGuard } from "@/components/SessionGuard";
@@ -48,11 +49,12 @@ export function Chrome({ processes, children }: { processes: Process[]; children
     <KaratProvider processes={processes}>
       <SessionGuard />
       {/* z-30: 본문 화면의 sticky 툴바(z-20)보다 위 — 헤더 작업일 달력 팝오버가 안 가리게 */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
         <span className="text-sm font-bold">dsqc · 제조공정 관리</span>
         <div className="flex items-center gap-4">
           <DateToggle />
           <HeaderNav />
+          <FontSizeToggle />
           <ThemeToggle />
           <LogoutButton />
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronDown, Loader2, Plus } from "lucide-react";
+import { ChevronDown, Loader2, PenLine, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, Process } from "@/lib/types";
 import { NumberInput } from "@/components/NumberInput";
@@ -155,7 +155,9 @@ export function EntryGrid({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">✏️ {processName}</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+          <PenLine aria-hidden className="size-5 text-slate-400" />{processName}
+        </h1>
         <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
           입력 → 입고/출고 전송
         </span>

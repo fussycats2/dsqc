@@ -38,7 +38,7 @@ export function ThemeToggle() {
   };
 
   return (
-    <label className="flex items-center gap-1.5 text-gray-500 dark:text-neutral-400">
+    <label className="flex items-center gap-1.5 text-slate-500 dark:text-neutral-400">
       <Sun className={`size-4 transition-colors ${isDark ? "" : "text-amber-500"}`} />
       <Switch checked={isDark} onCheckedChange={change} aria-label="다크 모드" />
       <Moon className={`size-4 transition-colors ${isDark ? "text-indigo-400" : ""}`} />
