@@ -10,49 +10,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UpdateHistory } from "@/components/UpdateHistory";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
-
-type Karat = "18K" | "14K";
-
+import { useKarat, type Karat } from "@/components/KaratContext";
 // 분류 버튼 — 누르면 위로 펼쳐지는 드롭다운(가로로 안 늘어남). 부서·검수 | 연마·빠우·뻥.
-type MenuGroup = { key: string; label: string; match: (p: Process) => boolean; wide?: boolean };
-const MENU_GROUPS: MenuGroup[] = [
-  { key: "부서", label: "부서", match: (p) => p.schema_type === "io" && !p.is_inspection },
-  { key: "검수", label: "검수", match: (p) => p.is_inspection },
-  { key: "연마", label: "연마", match: (p) => p.schema_type === "work" && p.category.includes("연마"), wide: true },
-  { key: "빠우", label: "빠우", match: (p) => p.schema_type === "work" && p.category.includes("빠우"), wide: true },
-  { key: "뻥", label: "뻥", match: (p) => p.schema_type === "work" && p.category.includes("뻥"), wide: true },
-];
-
-function Seg({
-  items, value, onChange, activeBg,
-}: {
-  items: { key: string; label: string }[];
-  value: string;
-  onChange: (k: string) => void;
-  activeBg: string;
-}) {
-  return (
-    <div className="flex gap-1">
-      {items.map((it) => (
-        <button
-          key={it.key}
-          onClick={() => onChange(it.key)}
-          className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-            value === it.key
-              ? `${activeBg} border-transparent text-white`
-              : `bg-white hover:bg-gray-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 ${
-                  it.key === "18K"
-                    ? "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"
-                    : "border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400"
-                }`
-          }`}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { MENU_GROUPS, type MenuGroup } from "@/lib/menuGroups";
+import { Seg } from "@/components/Seg";
 
 export function TabBar({ processes }: { processes: Process[] }) {
   const pathname = usePathname();
@@ -82,15 +43,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
   const entry = processes.find((p) => p.schema_type === "entry");
   const activeProcess = processes.find((p) => pathname === `/process/${p.id}`);
 
-  const [karat, setKarat] = useState<Karat>(
-    (activeProcess?.karat as Karat) ?? "18K",
-  );
-  // 다른 공정으로 이동하면 karat을 그 공정에 맞춰 동기화 — 렌더 중 상태 조정 패턴(이동 시 1회).
-  const [syncedId, setSyncedId] = useState(activeProcess?.id);
-  if (activeProcess && activeProcess.schema_type !== "entry" && activeProcess.id !== syncedId) {
-    setSyncedId(activeProcess.id);
-    if (activeProcess.karat) setKarat(activeProcess.karat as Karat);
-  }
+  // 18K/14K 선택은 KaratProvider가 단일 출처(우클릭 네비게이션과 공유, 공정 이동 시 동기화 포함)
+  const { karat, setKarat } = useKarat();
 
   // 선택 강조색을 karat에 따라 이중화: 18K=빨강 / 14K=파랑
   const accentBg = karat === "18K" ? "bg-rose-600" : "bg-blue-600";

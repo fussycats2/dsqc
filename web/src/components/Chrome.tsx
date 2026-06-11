@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { FileSpreadsheet } from "lucide-react";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { TabBar } from "@/components/TabBar";
+import { KaratProvider } from "@/components/KaratContext";
+import { NavContextMenu } from "@/components/NavContextMenu";
 import { DateToggle } from "@/components/DateToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -43,7 +45,7 @@ export function Chrome({ processes, children }: { processes: Process[]; children
   if (pathname === "/login" || pathname.startsWith("/print")) return <div className="flex-1">{children}</div>;
 
   return (
-    <>
+    <KaratProvider processes={processes}>
       <SessionGuard />
       {/* z-30: 본문 화면의 sticky 툴바(z-20)보다 위 — 헤더 작업일 달력 팝오버가 안 가리게 */}
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-gray-300 bg-white px-4 py-2 print:hidden dark:border-neutral-700 dark:bg-neutral-900">
@@ -55,9 +57,10 @@ export function Chrome({ processes, children }: { processes: Process[]; children
           <LogoutButton />
         </div>
       </header>
-      <div className="flex-1">{children}</div>
+      {/* 본문 우클릭 → 네비게이션 메뉴(flex-1 래퍼는 NavContextMenu가 렌더) */}
+      <NavContextMenu processes={processes}>{children}</NavContextMenu>
       <TabBar processes={processes} />
       <Toaster position="top-center" richColors closeButton duration={3200} />
-    </>
+    </KaratProvider>
   );
 }
