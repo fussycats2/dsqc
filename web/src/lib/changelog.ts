@@ -15,7 +15,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "v1.3.5",
+    version: "v1.4.0",
     date: "2026-06-11",
     title: "화면 새단장 — 새 글꼴 · 글자 크게 옵션 · 대시보드 현황 카드",
     items: [
