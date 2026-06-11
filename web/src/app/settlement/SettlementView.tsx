@@ -173,11 +173,12 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
   }, []);
 
   // ───────── 셀 스타일 ─────────
+  // 화면은 한 단계 키운 크기(읽기 편하게), 인쇄는 print: 변형으로 기존 크기 그대로 — 인쇄 양식 불변.
   const bd = "border border-slate-400 dark:border-neutral-500";
-  const thCls = `${bd} bg-slate-100 px-0.5 py-[3px] text-center text-[9px] font-medium leading-tight text-slate-600 dark:bg-neutral-800 dark:text-neutral-300 print:bg-slate-100`;
-  const rhCls = `${bd} bg-slate-50 px-0.5 py-[3px] text-center text-[10px] font-semibold leading-tight dark:bg-neutral-800/60 print:bg-slate-50`;
-  const tCls = `${bd} px-1 py-[3px] text-[10px] leading-tight`;
-  const calcCls = `${bd} bg-slate-50/70 px-1 py-[3px] text-right text-[10px] font-medium tabular-nums dark:bg-neutral-800/40 print:bg-transparent`;
+  const thCls = `${bd} bg-slate-100 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-slate-600 dark:bg-neutral-800 dark:text-neutral-300 print:bg-slate-100 print:py-[3px] print:text-[9px]`;
+  const rhCls = `${bd} bg-slate-50 px-0.5 py-1 text-center text-xs font-semibold leading-tight dark:bg-neutral-800/60 print:bg-slate-50 print:py-[3px] print:text-[10px]`;
+  const tCls = `${bd} px-1 py-1 text-xs leading-tight print:py-[3px] print:text-[10px]`;
+  const calcCls = `${bd} bg-slate-50/70 px-1 py-1 text-right text-xs font-medium tabular-nums dark:bg-neutral-800/40 print:bg-transparent print:py-[3px] print:text-[10px]`;
 
   // 전일값(이월=sky)·보존값(위탁·고정=amber) 셀 배경색.
   //  input(bg-transparent)이 아니라 감싼 <td>에 칠한다 — 둘 다 background-color라 input에 같이 주면
@@ -199,7 +200,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         const r = e.target.value.replace(/,/g, "");
         if (r !== "" && r !== "-" && !isNaN(Number(r))) set(a, Number(r).toFixed(2));
       }}
-      className="w-full bg-transparent px-1 py-[3px] text-right text-[10px] tabular-nums outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40" />
+      className="w-full bg-transparent px-1 py-1 text-right text-xs tabular-nums outline-none focus:bg-blue-100 dark:focus:bg-blue-950/40 print:py-[3px] print:text-[10px]" />
   );
 
   const renderCell = (c: C, key: number) => {
@@ -211,19 +212,23 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     return <td key={key} colSpan={c.span} className={`${calcCls} ${c.cls ?? ""}`}>{fmtCalc(f[c.a]) || " "}</td>;
   };
 
-  // 공유 13열 그리드 — 모든 서브표가 같은 열에 정렬(엑셀과 동일)
-  const widths = [60, 56, ...Array(11).fill(50)]; // A, B, C..M
+  // 공유 13열 그리드 — 모든 서브표가 같은 열에 정렬(엑셀과 동일).
+  //  열 너비도 화면은 키우고 인쇄는 기존 60/56/50px 그대로(print: 변형).
+  const widths = [
+    "w-[72px] print:w-[60px]", "w-[66px] print:w-[56px]",
+    ...Array(11).fill("w-[58px] print:w-[50px]"),
+  ]; // A, B, C..M
   const sheet = (title: React.ReactNode, rows: C[][]) => (
     <table className="border-collapse" style={{ tableLayout: "fixed" }}>
-      <colgroup>{widths.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <colgroup>{widths.map((w, i) => <col key={i} className={w} />)}</colgroup>
       <tbody>
-        <tr><td colSpan={13} className="border-0 pb-0.5 pt-1.5 text-left text-[13px] font-bold">{title}</td></tr>
+        <tr><td colSpan={13} className="border-0 pb-0.5 pt-1.5 text-left text-[15px] font-bold print:text-[13px]">{title}</td></tr>
         {rows.map((r, i) => <tr key={i}>{r.map(renderCell)}</tr>)}
       </tbody>
     </table>
   );
   const gap: C[] = [{ k: "e", span: 13 }];
-  const titleRow = (t: string): C[] => [{ k: "t", t, span: 13, cls: "border-0 text-center text-[12px] font-bold tracking-wider py-1" }];
+  const titleRow = (t: string): C[] => [{ k: "t", t, span: 13, cls: "border-0 text-center text-sm font-bold tracking-wider py-1 print:text-[12px]" }];
 
   // ───────── K18 ─────────
   const block18: C[][] = [
@@ -241,7 +246,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     gap,
     titleRow("K18 재 고 결 산"),
     [{ k: "rh", t: "전일재고" }, { k: "in", a: "B18" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량 18", span: 2, cls: "border-0 text-right text-slate-500" }, { k: "in", a: "hbjr18" }],
-    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "e", span: 1, b: true }],
+    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[11px] text-slate-400 print:text-[9px]" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}19` } as C)), { k: "e", span: 1, b: true }],
     [{ k: "h", t: "K18" }, ...["분석업체", "기계", "양장", "캐스팅", "조립초광", "캐.초광", "땜", "조립2차", "캐스팅2차", "고정값1", "고정값2"].map((t) => ({ k: "h", t } as C)), { k: "e", span: 1, b: true }],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B21" }, ...range("C", 10).map((c) => ({ k: "in", a: `${c}21` } as C)), { k: "e", span: 1, b: true }],
     gap,
@@ -265,7 +270,7 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
     gap,
     titleRow("K14 재 고 결 산"),
     [{ k: "rh", t: "전일재고" }, { k: "in", a: "B42" }, { k: "e", span: 8 }, { k: "t", t: "현분잔량", span: 2, cls: "border-0 text-right text-slate-500" }, { k: "in", a: "hbjr14" }],
-    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[9px] text-slate-400" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "e", span: 1, b: true }],
+    [{ k: "rh", t: "분석중량" }, { k: "rh", t: "위탁" }, ...range("C", 5).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "t", t: "현분대체", cls: "text-center text-[11px] text-slate-400 print:text-[9px]" }, ...range("I", 4).map((c) => ({ k: "in", a: `${c}43` } as C)), { k: "e", span: 1, b: true }],
     [{ k: "h", t: "K14" }, ...["분석업체", "조립", "캐스팅", "조립초광", "캐스팅초광", "땜", "2차작업", "고정값1", "고정값2", "실재고", "장부재고", "차중량"].map((t) => ({ k: "h", t } as C))],
     [{ k: "rh", t: "중량" }, { k: "calc", a: "B45" }, ...range("C", 8).map((c) => ({ k: "in", a: `${c}45` } as C)), { k: "calc", a: "K45" }, { k: "calc", a: "L45" }, { k: "calc", a: "M45" }],
   ];
@@ -396,14 +401,16 @@ export function SettlementView({ workDate, initial }: { workDate: string; initia
         <span>※ 엑셀처럼 Enter·방향키로 칸 이동, 드래그로 여러 칸 선택 후 Ctrl+C 복사, 엑셀 표를 붙여넣기(Ctrl+V)할 수 있습니다.</span>
       </div>
 
-      {/* 인쇄 영역 — 엑셀 양식 그대로 */}
+      {/* 입력·인쇄 영역 — 화면=K18·K14 좌우 배치(세로 스크롤 최소화)·결재란 숨김,
+          인쇄=print: 변형으로 엑셀 양식 그대로(상하 배치·결재란·기존 크기) */}
       <div ref={gridRef} className="mx-auto w-fit bg-white px-2 text-slate-900 dark:bg-white">
-        <div className="py-1 text-center text-[15px] font-bold tracking-wide">품질관리부 일일 결산서</div>
-        <div className="pb-1 text-right text-[11px] text-slate-600">{fmtD(workDate)}</div>
-        {sheet(<span className="text-rose-600">K18</span>, block18)}
-        <div className="h-3" />
-        {sheet(<span className="text-blue-600">K14</span>, block14)}
-        <div className="mt-3 flex justify-end gap-4 pb-2">
+        <div className="py-1 text-center text-lg font-bold tracking-wide print:text-[15px]">품질관리부 일일 결산서</div>
+        <div className="pb-1 text-right text-xs text-slate-600 print:text-[11px]">{fmtD(workDate)}</div>
+        <div className="flex flex-wrap items-start gap-x-8 gap-y-3 print:block">
+          <div>{sheet(<span className="text-rose-600">K18</span>, block18)}</div>
+          <div className="print:mt-3">{sheet(<span className="text-blue-600">K14</span>, block14)}</div>
+        </div>
+        <div className="mt-3 hidden justify-end gap-4 pb-2 print:flex">
           {approval(["담당", "공장장"])}
           {approval(["담당", "관리이사", "대표이사"])}
         </div>
