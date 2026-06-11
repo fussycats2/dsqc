@@ -12,6 +12,7 @@ import {
   ContextMenuSubTrigger, ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
+import { MenuScrim } from "@/components/MenuScrim";
 import { Seg } from "@/components/Seg";
 import type { Karat } from "@/components/KaratContext";
 
@@ -41,6 +42,8 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
   // Radix는 메뉴가 열린 채 다른 곳을 우클릭하면 좌표만 갱신하고 재배치하지 않음 —
   //  우클릭마다 content를 리마운트(key 변경)시켜 새 커서 위치로 따라오게 한다.
   const [reopenKey, setReopenKey] = useState(0);
+  // 열림 상태 — 데이터 위에서도 메뉴가 또렷하게 보이도록 본문을 어둡게+흐리게 하는 스크림용
+  const [open, setOpen] = useState(false);
 
   // 메뉴에 마우스가 들어왔다 벗어나면 자동 닫기 — 500ms 유예
   //  (루트↔서브메뉴 사이를 건너는 동안 닫히지 않도록 양쪽이 타이머를 공유).
@@ -113,7 +116,7 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
 
   return (
     <>
-      <ContextMenu modal={false} onOpenChange={(o) => { if (!o) cancelClose(); }}>
+      <ContextMenu modal={false} onOpenChange={(o) => { setOpen(o); if (!o) cancelClose(); }}>
         <ContextMenuTrigger asChild>
           <div
             className="flex-1"
@@ -152,6 +155,7 @@ export function NavContextMenu({ processes, children }: { processes: Process[]; 
           {entry && topItem(`/process/${entry.id}`, "✏️ 작성")}
         </ContextMenuContent>
       </ContextMenu>
+      <MenuScrim show={open} />
       <LoadingOverlay show={navPending} />
     </>
   );

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UpdateHistory } from "@/components/UpdateHistory";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
+import { MenuScrim } from "@/components/MenuScrim";
 import { useKarat, type Karat } from "@/components/KaratContext";
 // 분류 버튼 — 누르면 위로 펼쳐지는 드롭다운(가로로 안 늘어남). 부서·검수 | 연마·빠우·뻥.
 import { MENU_GROUPS, type MenuGroup } from "@/lib/menuGroups";
@@ -142,6 +143,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
         )}
         <UpdateHistory />
       </div>
+      {/* 분류 드롭다운이 펼쳐진 동안 본문 어둡게+흐리게 — 우클릭 메뉴와 동일 효과(body 포털이라 z-20 안 갇힘) */}
+      <MenuScrim show={openKey !== null} />
       <LoadingOverlay show={navPending} />
     </nav>
   );
