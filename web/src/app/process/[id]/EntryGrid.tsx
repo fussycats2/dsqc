@@ -1,16 +1,19 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, Process } from "@/lib/types";
 import { NumberInput } from "@/components/NumberInput";
+import { MenuScrim } from "@/components/MenuScrim";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuTrigger,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useGridSheet } from "@/lib/useGridSheet";
+import { ioGroupOf } from "@/lib/menuGroups";
+import { useHoverMenu } from "@/lib/useHoverMenu";
 import { sendRows, type EntryRow } from "./actions";
 
 const FIELDS: (keyof EntryRow)[] = [
@@ -37,6 +40,9 @@ export function EntryGrid({
   const is18 = karat === "18K";
   const activeTargets = is18 ? targets18 : targets14;
   const [pending, start] = useTransition();
+
+  // 입고/출고 메뉴 호버 펼침 — 하단탭·공정 툴바와 동일 로직(공용 훅)
+  const menu = useHoverMenu();
 
   const filled = useMemo(
     () => rows.filter((r) => r.description?.trim() || r.qty || r.weight || r.tag).length,
@@ -96,39 +102,55 @@ export function EntryGrid({
   };
 
   // 입고/출고 드롭다운 — 현재 karat 대상 목록을 보여주고 선택 즉시 실행.
+  //  호버 시 바로 펼침(하단탭과 동일 로직, 터치는 기존 탭 동작), 부서|검수 사이 구분선.
   //  컴포넌트가 아닌 렌더 함수(호출) — render 중 컴포넌트 정의 금지 규칙 회피.
-  const sendMenu = (side: "in" | "out", label: string) => (
-    <DropdownMenu key={side}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          size="sm"
-          variant={side === "in" ? "default" : "outline"}
-          disabled={pending || filled === 0 || activeTargets.length === 0}
-          className={
-            side === "in"
-              ? is18
-                ? "bg-rose-600 text-white hover:bg-rose-700"
-                : "bg-blue-600 text-white hover:bg-blue-700"
-              : is18
-                ? "border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
-                : "border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40"
-          }
+  const sendMenu = (side: "in" | "out", label: string) => {
+    const disabled = pending || filled === 0 || activeTargets.length === 0;
+    const sorted = [...activeTargets].sort((a, b) => ioGroupOf(a) - ioGroupOf(b));
+    return (
+      <DropdownMenu key={side} modal={false} open={menu.openKey === side} onOpenChange={(o) => menu.setOpenKey(o ? side : null)}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant={side === "in" ? "default" : "outline"}
+            disabled={disabled}
+            onPointerEnter={(e) => { if (e.pointerType !== "touch" && !disabled) menu.open(side); }}
+            onPointerLeave={(e) => { if (e.pointerType !== "touch") menu.scheduleClose(); }}
+            className={
+              side === "in"
+                ? is18
+                  ? "bg-rose-600 text-white hover:bg-rose-700"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+                : is18
+                  ? "border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                  : "border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/40"
+            }
+          >
+            {pending ? <Loader2 className="animate-spin" /> : null}
+            {label}
+            <ChevronDown />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="max-h-[60vh] overflow-y-auto"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onPointerEnter={menu.cancelClose}
+          onPointerLeave={(e) => { if (e.pointerType !== "touch") menu.scheduleClose(); }}
         >
-          {pending ? <Loader2 className="animate-spin" /> : null}
-          {label}
-          <ChevronDown />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[60vh] overflow-y-auto">
-        <DropdownMenuLabel>{karat} · {label} 대상 선택</DropdownMenuLabel>
-        {activeTargets.map((t) => (
-          <DropdownMenuItem key={t.id} onSelect={() => send(t, side)}>
-            {t.name}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+          <DropdownMenuLabel>{karat} · {label} 대상 선택</DropdownMenuLabel>
+          {sorted.map((t, i) => (
+            <Fragment key={t.id}>
+              {i > 0 && ioGroupOf(sorted[i - 1]) !== ioGroupOf(t) && <DropdownMenuSeparator />}
+              <DropdownMenuItem onSelect={() => send(t, side)}>
+                {t.name}
+              </DropdownMenuItem>
+            </Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -139,8 +161,9 @@ export function EntryGrid({
         </span>
       </div>
 
-      {/* 전송 바 — Karat 토글(18K 붉은/14K 파란) + 입고/출고 메뉴 버튼 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      {/* 전송 바 — Karat 토글(18K 붉은/14K 파란) + 입고/출고 메뉴 버튼.
+          메뉴가 펼쳐진 동안 스크림(z-25) 위(z-26)로 올려 하단탭처럼 또렷하게 */}
+      <div className={`relative ${menu.openKey !== null ? "z-[26]" : ""} flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900`}>
         <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-neutral-700">
           {(["18K", "14K"] as const).map((k) => (
             <button key={k} onClick={() => setKarat(k)}
@@ -161,6 +184,8 @@ export function EntryGrid({
           onClick={() => setRows((r) => [...r, blank(), blank(), blank()])}>
           <Plus />행 추가
         </Button>
+        {/* 입고/출고 메뉴가 펼쳐진 동안 본문 어둡게+흐리게 — 하단탭·우클릭 메뉴와 동일 효과 */}
+        <MenuScrim show={menu.openKey !== null} />
       </div>
 
       {/* 입력 그리드 (콘텐츠 폭 — 화면 가로로 늘어나지 않게) */}

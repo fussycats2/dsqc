@@ -37,20 +37,35 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme}
       className="toaster group"
       icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
-        loading: <Loader2Icon className="size-4 animate-spin" />,
+        success: <CircleCheckIcon className="size-5" />,
+        info: <InfoIcon className="size-5" />,
+        warning: <TriangleAlertIcon className="size-5" />,
+        error: <OctagonXIcon className="size-5" />,
+        loading: <Loader2Icon className="size-5 animate-spin" />,
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
+          // 일반(toast.message) — 테마 반전 고대비: 라이트=진회색 바탕/흰 글씨, 다크=흰 바탕/검은 글씨
+          "--normal-bg": theme === "dark" ? "#fafafa" : "#1e293b",
+          "--normal-text": theme === "dark" ? "#171717" : "#f8fafc",
+          "--normal-border": "transparent",
+          // 타입별(richColors) — 기본 파스텔 대신 진한 단색 배경 + 흰 글씨(시인성)
+          "--success-bg": "#059669", "--success-text": "#ffffff", "--success-border": "#047857",
+          "--error-bg": "#e11d48", "--error-text": "#ffffff", "--error-border": "#be123c",
+          "--warning-bg": "#d97706", "--warning-text": "#ffffff", "--warning-border": "#b45309",
+          "--info-bg": "#2563eb", "--info-text": "#ffffff", "--info-border": "#1d4ed8",
           "--border-radius": "var(--radius)",
+          "--width": "420px", // 기본 356px보다 넓게 — 한 줄 메시지가 덜 접힘
         } as React.CSSProperties
       }
+      toastOptions={{
+        // 시인성 강화 — 글자 크게·굵게, 테두리 두껍게, 그림자 진하게(richColors 배경과 조합)
+        classNames: {
+          toast: "!gap-2.5 !border-2 !py-3.5 !shadow-xl",
+          title: "!text-[0.95rem] !font-semibold !leading-snug",
+          description: "!text-sm",
+        },
+      }}
       {...props}
     />
   )

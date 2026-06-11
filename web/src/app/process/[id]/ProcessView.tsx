@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ColDef, Lot, Process, TraceResult, TraceEdge } from "@/lib/types";
@@ -18,12 +18,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuTrigger,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ClientLink } from "@/components/ClientLink";
+import { MenuScrim } from "@/components/MenuScrim";
+import { workGroupOf, ioGroupOf } from "@/lib/menuGroups";
+import { useHoverMenu, type HoverMenu } from "@/lib/useHoverMenu";
 import {
   completeLots, feedToWork, feedToOtherDept, relayToWork, shipToIo,
   splitLotCustom, deleteLots, unlockLots, updateLot, tagAdjust, tagConfirm, traceLot,
@@ -738,25 +741,43 @@ function GenealogyModal({
   );
 }
 
-// ───────── 대상 선택 액션 (버튼 클릭 → 대상 메뉴 → 선택 즉시 실행) ─────────
+// ───────── 대상 선택 액션 (호버 시 바로 펼침 — 하단탭과 동일 로직·스크림, 터치는 기존 탭 동작 유지) ─────────
+// 펼침 상태는 툴바 전체가 useHoverMenu 하나를 공유(한 번에 하나만 열림, label이 key).
 function TargetAction({
-  label, tone, targets, disabled, onRun,
+  label, tone, targets, disabled, onRun, groupOf, menu,
 }: {
   label: string; tone: Tone;
   targets: Process[]; disabled: boolean; onRun: (targetId: string) => void;
+  groupOf?: (t: Process) => number; // 구분선 그룹 — 번호가 바뀌는 지점에 구분선
+  menu: HoverMenu;
 }) {
   if (targets.length === 0) return null;
+  const sorted = groupOf ? [...targets].sort((a, b) => groupOf(a) - groupOf(b)) : targets;
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false} open={menu.openKey === label} onOpenChange={(o) => menu.setOpenKey(o ? label : null)}>
       <DropdownMenuTrigger asChild>
-        <ActionBtn tone={tone} disabled={disabled}>{label}<ChevronDown /></ActionBtn>
+        <ActionBtn
+          tone={tone}
+          disabled={disabled}
+          onPointerEnter={(e) => { if (e.pointerType !== "touch" && !disabled) menu.open(label); }}
+          onPointerLeave={(e) => { if (e.pointerType !== "touch") menu.scheduleClose(); }}
+        >{label}<ChevronDown /></ActionBtn>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[60vh] overflow-y-auto">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-[60vh] overflow-y-auto"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onPointerEnter={menu.cancelClose}
+        onPointerLeave={(e) => { if (e.pointerType !== "touch") menu.scheduleClose(); }}
+      >
         <DropdownMenuLabel>{label} 대상</DropdownMenuLabel>
-        {targets.map((t) => (
-          <DropdownMenuItem key={t.id} onSelect={() => onRun(t.id)}>
-            {t.name}
-          </DropdownMenuItem>
+        {sorted.map((t, i) => (
+          <Fragment key={t.id}>
+            {groupOf && i > 0 && groupOf(sorted[i - 1]) !== groupOf(t) && <DropdownMenuSeparator />}
+            <DropdownMenuItem onSelect={() => onRun(t.id)}>
+              {t.name}
+            </DropdownMenuItem>
+          </Fragment>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -784,6 +805,9 @@ export function ProcessView({
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceLoading, setTraceLoading] = useState(false);
   const [pending, start] = useTransition();
+
+  // 툴바 대상 드롭다운(공정투입·타부서출고·공정이관·현장출고·검수출고) 호버 펼침 — 하단탭과 동일 로직
+  const menu = useHoverMenu();
 
   // 확인 모달(AlertDialog) 상태 — 알림은 sonner toast()로 직접 호출
   const [confirmBox, setConfirmBox] = useState<
@@ -919,8 +943,8 @@ export function ProcessView({
         </span>
       </div>
 
-      {/* 액션 툴바 */}
-      <div ref={toolbarRef} className="sticky top-[49px] z-20 rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
+      {/* 액션 툴바 — 대상 메뉴가 펼쳐진 동안 스크림(z-25) 위(z-26)로 올려 하단탭처럼 또렷하게 */}
+      <div ref={toolbarRef} className={`sticky top-[49px] ${menu.openKey !== null ? "z-[26]" : "z-20"} rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur print:hidden dark:border-neutral-800 dark:bg-neutral-900/90`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-400">
             선택 {isWork ? "작업중" : "입고"} <b className="text-slate-600 dark:text-neutral-200">{nIn}</b> · {isWork ? "완료" : "출고"} <b className="text-slate-600 dark:text-neutral-200">{nOut}</b>
@@ -946,9 +970,9 @@ export function ProcessView({
             </>
           ) : (
             <>
-              <TargetAction label="공정투입" tone="indigo" targets={workTargets} disabled={pending || nIn === 0 || hasLocked}
+              <TargetAction label="공정투입" tone="indigo" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
                 onRun={(t) => run(() => feedToWork(process.id, t, inIds), (r) => `${r.moved}건 공정투입`)} />
-              <TargetAction label="타부서출고" tone="default" targets={otherIoTargets} disabled={pending || nIn === 0 || hasLocked}
+              <TargetAction label="타부서출고" tone="default" targets={otherIoTargets} groupOf={ioGroupOf} menu={menu} disabled={pending || nIn === 0 || hasLocked}
                 onRun={(t) => run(() => feedToOtherDept(process.id, t, inIds), (r) => `${r.moved}건 타부서출고`)} />
             </>
           )}
@@ -983,11 +1007,11 @@ export function ProcessView({
 
           {isWork ? (
             <>
-              <TargetAction label="공정이관" tone="rose" targets={workTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="공정이관" tone="rose" targets={workTargets} groupOf={workGroupOf} menu={menu} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => relayToWork(process.id, t, outIds), (r) => `${r.moved}건 공정이관`)} />
-              <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="현장출고" tone="default" targets={ioFieldTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 현장출고`)} />
-              <TargetAction label="검수출고" tone="default" targets={ioInspTargets} disabled={pending || nOut === 0 || hasLocked}
+              <TargetAction label="검수출고" tone="default" targets={ioInspTargets} menu={menu} disabled={pending || nOut === 0 || hasLocked}
                 onRun={(t) => run(() => shipToIo(process.id, t, outIds), (r) => `${r.moved}건 검수출고`)} />
             </>
           ) : (
@@ -1054,6 +1078,8 @@ export function ProcessView({
               className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-500 dark:border-neutral-700">지우기</button>
           </div>
         )}
+        {/* 대상 메뉴가 펼쳐진 동안 본문 어둡게+흐리게 — 하단탭·우클릭 메뉴와 동일 효과 */}
+        <MenuScrim show={menu.openKey !== null} />
       </div>
 
       {/* 수정 패널 */}

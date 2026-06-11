@@ -358,9 +358,12 @@ export async function shipToIo(
   }));
 }
 
-// ───────── 분할 (Module1 확장): 1건 → 사용자가 지정한 수량/중량으로 n건. 원본 삭제 ─────────
+// ───────── 분할 (Module1 확장): 1건 → 사용자가 지정한 수량/중량으로 n건 ─────────
 //  · 분할 합(수량/중량)은 원본과 동일해야 함(클라이언트에서 강제, 서버에서 재검증)
-//  · 일련번호 -1..-n, 내역/납기/비고/이전파트 승계
+//  · 원본 행을 첫 조각(-1)으로 갱신하고 나머지 조각(-2..-n)만 새로 생성 — 원본이 남으므로
+//    이전 공정 링크(이동·이월)가 끊기지 않고, 원본→새 조각 'split' 링크로 계보가 이어짐.
+//    작성에서 바로 입고돼 부모 링크가 없는 행도 분할 기록이 계보 추적에 남음.
+//  · 행수(n)·수량/중량 합·일련번호 표기(-1..-n)는 종전(원본 삭제 방식)과 동일 → 회계 무변.
 export async function splitLotCustom(
   processId: string,
   lotId: string,
@@ -388,17 +391,12 @@ export async function splitLotCustom(
     return { error: `중량 합(${sumW})이 원본(${L.weight})과 다릅니다.` };
   }
 
-  // 계보(Option A): 원본의 부모(이전 공정) 링크를 찾아 자식들을 그 부모에 'split'로 직접 연결.
-  //  원본은 계속 삭제(회계=대시보드 입고/오차 무변), 대신 자식이 이전 공정 계보를 이어받음.
-  const { data: parentLinks } = await supabase
-    .from("lot_links").select("from_lot").eq("to_lot", L.id);
-  const parents = [...new Set((parentLinks ?? []).map((e) => e.from_lot as string))];
-
-  // 자식 행(id 직접 부여 → lot_links 일괄 생성). 일련번호 -1..-n, 내역/납기/비고/이전파트 승계.
-  const childIds = parts.map(() => randomUUID());
-  const childRows = parts.map((p, i) => ({
+  // 새 조각 행(-2..-n, id 직접 부여 → lot_links 일괄 생성). 내역/납기/비고/이전파트 승계.
+  const rest = parts.slice(1);
+  const childIds = rest.map(() => randomUUID());
+  const childRows = rest.map((p, i) => ({
     id: childIds[i],
-    serial: L.serial ? `${L.serial}-${i + 1}` : null,
+    serial: L.serial ? `${L.serial}-${i + 2}` : null,
     process_id: processId,
     side: L.side,
     status: "작업중",
@@ -413,24 +411,34 @@ export async function splitLotCustom(
   }));
   const ins = await supabase.from("lots").insert(childRows);
   if (ins.error) {
-    await unlockParent(); // 자식행 생성 실패 → 원본 점유 원복
+    await unlockParent(); // 조각행 생성 실패 → 원본 점유 원복
     return { error: ins.error.message };
   }
 
-  // 부모 → 각 자식 'split' 링크(부모 있을 때만 — 출처행이면 이전 이력 없어 생략).
-  if (parents.length > 0) {
-    const links = parents.flatMap((pid) =>
-      childIds.map((cid) => ({ from_lot: pid, to_lot: cid, relation: "split" as const })));
-    const lk = await supabase.from("lot_links").insert(links);
-    if (lk.error) {
-      // 계보 기록 실패 → 자식행 회수 + 원본 점유 원복(원본 미삭제 상태라 이중 집계 방지)
-      await supabase.from("lots").delete().in("id", childIds);
-      await unlockParent();
-      return { error: "계보 기록 실패(원복됨): " + lk.error.message };
-    }
+  // 원본 → 각 새 조각 'split' 링크 — 계보 추적에 분할 기록이 남는 핵심.
+  const lk = await supabase.from("lot_links").insert(
+    childIds.map((cid) => ({ from_lot: L.id, to_lot: cid, relation: "split" as const })));
+  if (lk.error) {
+    // 계보 기록 실패 → 조각행 회수 + 원본 점유 원복(원본 미변경 상태라 이중 집계 방지)
+    await supabase.from("lots").delete().in("id", childIds);
+    await unlockParent();
+    return { error: "계보 기록 실패(원복됨): " + lk.error.message };
   }
-  // 원본 삭제 — 원본의 기존 링크(부모→원본)는 on delete cascade로 정리(부모→자식 링크는 유지).
-  await supabase.from("lots").delete().eq("id", L.id);
+
+  // 원본을 첫 조각(-1)으로 갱신 + 점유 해제.
+  //  tag/q/원중량은 비움 — 종전 방식(자식이 승계하지 않음)과 동일하게 조각엔 남기지 않음.
+  const upd = await supabase.from("lots").update({
+    serial: L.serial ? `${L.serial}-1` : null,
+    qty: parts[0].qty, weight: parts[0].weight,
+    tag: null, q: null, raw_weight: null,
+    locked: false,
+  }).eq("id", L.id);
+  if (upd.error) {
+    // 원본 갱신 실패 → 새 조각 회수(링크는 on delete cascade로 정리) + 점유 원복
+    await supabase.from("lots").delete().in("id", childIds);
+    await unlockParent();
+    return { error: upd.error.message };
+  }
   revalidatePath(`/process/${processId}`);
   return { ok: true, parts: parts.length };
 }
@@ -520,8 +528,8 @@ export async function unlockLots(processId: string, lotIds: string[]) {
 }
 
 // ───────── 계보 추적: 한 행이 거쳐온/거쳐갈 전 공정 경로 ─────────
-//  lot_links(move/merge/split)를 양방향 BFS로 따라가 연결된 모든 lot + 관계를 수집.
-//  · 분할(splitLotCustom)은 원본을 삭제하므로 그 지점에서 계보가 끊김(현재 사양).
+//  lot_links(move/merge/split/carry)를 양방향 BFS로 따라가 연결된 모든 lot + 관계를 수집.
+//  · 분할은 원본이 첫 조각(-1)으로 남아 원본→새 조각 'split' 링크로 이어짐(끊기지 않음).
 export async function traceLot(lotId: string): Promise<{ error?: string } & Partial<TraceResult>> {
   if (!lotId) return { error: "행이 지정되지 않았습니다." };
   const supabase = await createClient();

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Check, ChevronUp } from "lucide-react";
 import type { Process } from "@/lib/types";
 import {
@@ -14,6 +14,7 @@ import { MenuScrim } from "@/components/MenuScrim";
 import { useKarat, type Karat } from "@/components/KaratContext";
 // 분류 버튼 — 누르면 위로 펼쳐지는 드롭다운(가로로 안 늘어남). 부서·검수 | 연마·빠우·뻥.
 import { MENU_GROUPS, type MenuGroup } from "@/lib/menuGroups";
+import { useHoverMenu } from "@/lib/useHoverMenu";
 import { Seg } from "@/components/Seg";
 
 export function TabBar({ processes }: { processes: Process[] }) {
@@ -26,20 +27,8 @@ export function TabBar({ processes }: { processes: Process[] }) {
   // 호버/포커스 시 라우트 prefetch → 클릭 시 콜드 렌더 대기 없이 즉시 전환(체감 속도 개선)
   const warm = (href: string) => router.prefetch(href);
 
-  // 분류 메뉴(부서·검수·연마·빠우·뻥)는 호버로 펼치고 마우스가 나가면 닫음 — 어느 그룹이 열렸는지 key로 추적.
-  // 터치 기기엔 호버가 없으므로 pointerType이 'touch'면 무시 → 기존 클릭(탭) 동작 그대로 유지.
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelClose = () => {
-    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
-  };
-  const openGroup = (key: string) => { cancelClose(); setOpenKey(key); };
-  // 살짝 지연 후 닫기 — 버튼과 펼친 패널 사이 간극을 건너는 잠깐 동안 닫히지 않도록(유예 시간).
-  const scheduleClose = () => {
-    cancelClose();
-    closeTimer.current = setTimeout(() => setOpenKey(null), 150);
-  };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  // 분류 메뉴(부서·검수·연마·빠우·뻥)는 호버로 펼치고 마우스가 나가면 닫음 — 공용 훅(useHoverMenu) 사용.
+  const { openKey, setOpenKey, open: openGroup, cancelClose, scheduleClose } = useHoverMenu();
 
   const entry = processes.find((p) => p.schema_type === "entry");
   const activeProcess = processes.find((p) => pathname === `/process/${p.id}`);
