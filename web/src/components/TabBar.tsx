@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { Check, ChevronUp, Home, PenLine } from "lucide-react";
+import { BookOpen, Check, ChevronUp, Home, PenLine } from "lucide-react";
 import type { Process } from "@/lib/types";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -136,6 +136,16 @@ export function TabBar({ processes }: { processes: Process[] }) {
           </span>
         )}
         <UpdateHistory />
+        {/* 사용자 매뉴얼 — public/manual.html(원본 파일, 직접 편집)을 새 탭으로 연다. 스크린샷은 public/shots/. 인쇄/PDF 저장이 모달보다 자연스러워 새 탭 방식 */}
+        <a
+          href="/manual.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="사용자 매뉴얼 (새 탭에서 열기)"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+        >
+          <BookOpen aria-hidden className="size-3.5" />매뉴얼
+        </a>
       </div>
       {/* 분류 드롭다운이 펼쳐진 동안 본문 어둡게+흐리게 — 우클릭 메뉴와 동일 효과(body 포털이라 z-20 안 갇힘) */}
       <MenuScrim show={openKey !== null} />

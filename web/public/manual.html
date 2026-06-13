@@ -777,6 +777,18 @@
         color: inherit;
         text-decoration: none;
       }
+      .toc .tgrp {
+        display: block;
+        border-bottom: 0;
+        padding: 12px 0 4px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        color: var(--brand);
+      }
+      .toc .tgrp:first-child {
+        padding-top: 2px;
+      }
 
       /* no-print 상단 바 */
       .topbar {
@@ -876,14 +888,14 @@
           </p>
           <div class="meta">
             <div><span>프로그램</span><span>dsqc · 제조공정 관리</span></div>
-            <div><span>기준 버전</span><span>v1.4.0</span></div>
+            <div><span>기준 버전</span><span>v1.4.1</span></div>
             <div><span>문서 작성일</span><span>2026-06-13</span></div>
             <div><span>대상 화면</span><span>데스크톱 (24~27″)</span></div>
             <div><span>제작</span><span>ChoBR_</span></div>
           </div>
         </div>
         <footer class="pgft">
-          <span>dsqc 사용자 매뉴얼 · v1.4.0</span><span></span>
+          <span>dsqc 사용자 매뉴얼 · v1.4.1</span><span></span>
         </footer>
       </section>
 
@@ -896,11 +908,12 @@
             출력됩니다.
           </p>
           <ol class="toc">
+            <li class="tgrp">시작하기</li>
             <li>
               <span class="tn">1</span
               ><span class="tt"
                 ><b>시스템 소개와 전체 작업 흐름</b> — 무엇을 하는 프로그램인지,
-                하루 업무의 큰 줄기</span
+                하루 작업의 전체 흐름</span
               >
             </li>
             <li>
@@ -921,6 +934,7 @@
               <span class="tn">4</span
               ><span class="tt"><b>로그인</b> — 공용 계정, 자동 로그아웃</span>
             </li>
+            <li class="tgrp">화면별 사용법</li>
             <li>
               <span class="tn">5</span
               ><span class="tt"
@@ -992,6 +1006,7 @@
                 ><b>인쇄(장부)</b> — 재고·입고·출고·검수 장부</span
               >
             </li>
+            <li class="tgrp">마무리 · 부록</li>
             <li>
               <span class="tn">17</span
               ><span class="tt"
@@ -1019,12 +1034,12 @@
             >
             &nbsp; 버튼은 <span class="btn btn-line">이렇게</span>, 키보드는
             <span class="kbd">Enter</span>처럼 표시합니다. 화면 그림은
-            <b>실제 프로그램을 캡처</b>한 것입니다.</br>(예시 데이터, 2026-06-04
+            <b>실제 프로그램을 캡처</b>한 것입니다.<br />(예시 데이터, 2026-06-04
             기준).
           </div>
         </div>
         <footer class="pgft">
-          <span>dsqc 사용자 매뉴얼 · v1.4.0</span><span class="pgnum"></span>
+          <span>dsqc 사용자 매뉴얼 · v1.4.1</span><span class="pgnum"></span>
         </footer>
       </section>
 
@@ -1040,7 +1055,7 @@
             <b>입력 방식과 화면 구성이 엑셀과 비슷</b>합니다.
           </p>
 
-          <h3>하루 일의 큰 줄기</h3>
+          <h3>전체 작업 흐름</h3>
           <div class="flow">
             <div class="fstep">
               <span class="ft">작성</span
@@ -1156,7 +1171,7 @@
         <div class="body">
           <h2><span class="n">2</span> 화면 공통 ① — 상단 바</h2>
           <p class="lead">
-            로그인·인쇄화면을 뺀 모든 화면 맨 위에 항상 붙어 있는 막대입니다.
+            로그인·인쇄 화면을 제외한 모든 화면 맨 위에 항상 붙어 있는 막대입니다.
             아래로 스크롤해도 따라옵니다.
           </p>
 
@@ -1239,7 +1254,7 @@
             작업일이 <b>오늘</b>인지 확인하는 습관을 들이세요. (접속할 때는
             자동으로 오늘로 시작합니다.)
           </div>
-        </br>
+        <br />
           <figure class="shot">
             <img
               class="cap-img"
@@ -1317,7 +1332,8 @@
             </li>
             <li>
               지금 보고 있는 공정에는 목록에서 <b>✓</b> 표시가 붙습니다. 오른쪽
-              끝에는 현재 공정과 <b>🆕 업데이트</b>(변경 이력) 버튼이 있습니다.
+              끝에는 현재 공정 이름과 <b>업데이트</b>(변경 이력)·<b>매뉴얼</b>(이
+              사용설명서를 새 탭으로 열기) 버튼이 있습니다.
             </li>
           </ul>
 
@@ -1334,7 +1350,7 @@
             메뉴 대신
             <b>브라우저 기본 메뉴(복사·붙여넣기)</b>가 평소처럼 열립니다.
           </div>
-        </br>
+        <br />
           <figure class="shot">
             <img
               class="cap-img"
@@ -1563,7 +1579,7 @@
 
           <h3>공정 현황표 (18K 공정 / 14K 공정)</h3>
           <p>
-            연마·뻥·빠우 공정의 흐름을 공정별로 보여줍니다. 열은
+            연마·빠우·뻥 공정의 흐름을 공정별로 보여줍니다. 열은
             <b>입고 · 재고 · 출고 · 로스 · 오차</b>이고 맨 아래 <b>계</b> 행이
             합계입니다.
           </p>
@@ -2473,7 +2489,7 @@
                 <td>
                   🔒 잠긴 행을 처리하는 유일한 길입니다. 창에서
                   <b>잠금 해제</b>(다시 작업 가능) 또는 <b>삭제</b>를 고릅니다.
-                  보통 삭제로는 잠금 행이 지워지지 않습니다.
+                  일반 삭제로는 잠긴 행이 지워지지 않습니다.
                 </td>
               </tr>
             </tbody>
@@ -3021,16 +3037,13 @@
         <div class="body">
           <h2><span class="n">20</span> 이 매뉴얼을 PDF로 저장·인쇄하는 법</h2>
           <p class="lead">
-            이 파일은 <b>섹션마다 새 종이 한 장</b>으로 나뉘도록 만들어졌습니다.
+            이 매뉴얼은 <b>섹션마다 새 종이 한 장</b>으로 나뉘도록
+            만들어졌습니다. 화면 아래 탭바의 <b>매뉴얼</b> 버튼으로 열면,
             브라우저에서 바로 PDF로 저장할 수 있습니다.
           </p>
 
           <h3>순서 (크롬·엣지 기준)</h3>
           <ol>
-            <li>
-              이 파일(<code>사용자매뉴얼.html</code>)을 <b>더블 클릭</b>해
-              브라우저로 엽니다.
-            </li>
             <li>
               <span class="kbd">Ctrl</span>+<span class="kbd">P</span> 를
               누릅니다(인쇄 창). 위쪽의 <b>🖨 인쇄 / PDF 저장</b> 버튼을 눌러도
@@ -3080,7 +3093,7 @@
             </tbody>
           </table>
 
-          <ol start="4">
+          <ol start="3">
             <li>
               <b>저장</b>을 눌러 PDF로 저장합니다(파일 이름을 정할 수 있습니다).
             </li>
@@ -3104,7 +3117,7 @@
           >
             — 문서 끝 —<br />
             <span class="small"
-              >dsqc · 제조공정 관리 사용자 매뉴얼 · v1.4.0 · 2026-06-13</span
+              >dsqc · 제조공정 관리 사용자 매뉴얼 · v1.4.1 · 2026-06-13</span
             >
           </div>
         </div>

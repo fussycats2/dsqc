@@ -15,6 +15,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "v1.4.1",
+    date: "2026-06-13",
+    title: "사용자 매뉴얼 추가",
+    items: [
+      "화면 아래 탭바 오른쪽에 ‘매뉴얼’ 버튼이 생겼습니다 — 누르면 사용자 매뉴얼이 새 탭에서 열립니다. 섹션마다 A4 한 장으로 나뉘어 있어, 브라우저에서 바로 PDF로 저장하거나 인쇄할 수 있습니다(Ctrl+P).",
+    ],
+  },
+  {
     version: "v1.4.0",
     date: "2026-06-11",
     title: "화면 새단장 — 새 글꼴 · 글자 크게 옵션 · 대시보드 현황 카드",

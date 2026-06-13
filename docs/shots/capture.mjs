@@ -8,7 +8,7 @@
 //   3) 캡처:                     DSQC_PW=비밀번호 node docs/shots/capture.mjs
 //   (다른 주소면 BASE=http://... 추가)
 //
-// 결과: docs/shots/*.png 가 갱신됨 → 매뉴얼은 같은 파일명을 자동으로 표시(수정 불필요).
+// 결과: web/public/shots/*.png 가 갱신됨 → 매뉴얼(web/public/manual.html)이 같은 파일명을 자동 표시(수정 불필요).
 
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -17,7 +17,10 @@ import { fileURLToPath } from 'url';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 const PW = process.env.DSQC_PW || '';
-const OUT = path.dirname(fileURLToPath(import.meta.url)); // docs/shots
+// 출력 위치 = web/public/shots (앱이 /manual.html 에서 src="shots/NAME.png" 로 읽는 곳).
+// capture.mjs 자체는 docs/shots 에 두고 결과 PNG만 public 으로 내보낸다.
+const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'public', 'shots');
+fs.mkdirSync(OUT, { recursive: true });
 if (!PW) { console.error('DSQC_PW 환경변수에 로그인 비밀번호를 넣어 실행하세요.'); process.exit(1); }
 
 const results = [];
