@@ -40,10 +40,11 @@ function HeaderNav() {
   );
 }
 
-// /login·인쇄 surface(/print/*)에서는 헤더·탭바를 숨기고 본문만 렌더(인쇄 미리보기는 모달 iframe으로 임베드)
+// /login·인쇄 surface(/print/*)·매뉴얼 뷰어(/manual)에서는 헤더·탭바를 숨기고 본문만 풀스크린으로 렌더
+//  (매뉴얼은 자체 상단바로 인쇄/닫기를 제공 — manual/page.tsx)
 export function Chrome({ processes, children }: { processes: Process[]; children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login" || pathname.startsWith("/print")) return <div className="flex-1">{children}</div>;
+  if (pathname === "/login" || pathname === "/manual" || pathname.startsWith("/print")) return <div className="flex-1">{children}</div>;
 
   return (
     <KaratProvider processes={processes}>

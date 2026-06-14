@@ -820,6 +820,11 @@
       .topbar .pbtn:hover {
         filter: brightness(1.05);
       }
+      /* 앱 내 매뉴얼 뷰어(/manual)의 iframe으로 열리면 자체 상단바를 숨긴다 —
+         앱이 인쇄/닫기 바를 제공하므로 상단이 2단으로 겹치는 것을 막는다. */
+      html.embedded .topbar {
+        display: none;
+      }
 
       .kgrid {
         display: grid;
@@ -856,6 +861,11 @@
         break-inside: avoid;
       }
     </style>
+    <script>
+      // 앱 뷰어(/manual)의 iframe 안에서 열렸으면 자체 상단바를 숨김(앱이 인쇄/닫기 바를 제공 → 2단 방지).
+      if (window.self !== window.top)
+        document.documentElement.classList.add("embedded");
+    </script>
   </head>
   <body>
     <div class="no-print topbar">
@@ -1333,7 +1343,7 @@
             <li>
               지금 보고 있는 공정에는 목록에서 <b>✓</b> 표시가 붙습니다. 오른쪽
               끝에는 현재 공정 이름과 <b>업데이트</b>(변경 이력)·<b>매뉴얼</b>(이
-              사용설명서를 새 탭으로 열기) 버튼이 있습니다.
+              사용설명서를 전체화면으로 열기) 버튼이 있습니다.
             </li>
           </ul>
 
@@ -3045,9 +3055,9 @@
           <h3>순서 (크롬·엣지 기준)</h3>
           <ol>
             <li>
-              <span class="kbd">Ctrl</span>+<span class="kbd">P</span> 를
-              누릅니다(인쇄 창). 위쪽의 <b>🖨 인쇄 / PDF 저장</b> 버튼을 눌러도
-              됩니다.
+              화면 <b>오른쪽 위의 🖨 인쇄 버튼</b>을 누릅니다(인쇄 창).
+              <span class="kbd">Ctrl</span>+<span class="kbd">P</span>는 앱이
+              인쇄돼 권하지 않습니다.
             </li>
             <li>인쇄 창에서 아래처럼 맞춥니다.</li>
           </ol>
